@@ -3,7 +3,7 @@
 ### Prerequisites
 
 - Node.js ≥ 16
-- npm
+- npm atau yarn
 
 ### Installation
 
