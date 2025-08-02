@@ -11,7 +11,7 @@
 # Kloning repositori
 git clone https://github.com/NasDev07/kiwismart-gis.git
 cd kiwismart
-
+```
 # Instal dependensi
 npm install
 
