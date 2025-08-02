@@ -1,3 +1,20 @@
+![Tangkapan Layar KiwiSmart](./screenshot/Screenshot1.png)
+
+### Prerequisites
+
+- Node.js ≥ 16
+- npm atau yarn
+
+### Installation
+
+```bash
+# Kloning repositori
+git clone https://github.com/NasDev07/kiwismart-gis.git
+cd kiwismart
+
+# Instal dependensi
+npm install
+
 # React + Vite + Bootstrap
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
