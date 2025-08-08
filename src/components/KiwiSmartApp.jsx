@@ -1,4 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import * as THREE from 'three';
 
 const KiwiSmartApp = () => {
     const [isProjectOpen, setIsProjectOpen] = useState(false);
@@ -25,9 +26,12 @@ const KiwiSmartApp = () => {
         { id: 2, action: 'aiLabelingCompleted', timestamp: '2024-08-02 14:25:00', type: 'success' }
     ]);
     const [labelData, setLabelData] = useState([
-        { id: 1, groupId: 'GROUP_001', subGroupId: 'SUB_001', buildingType: 'residential' },
-        { id: 2, groupId: 'GROUP_002', subGroupId: 'SUB_001', buildingType: 'commercial' },
-        { id: 3, groupId: 'GROUP_003', subGroupId: 'SUB_002', buildingType: 'industrial' }
+        { id: 1, groupId: 'GROUP_001', subGroupId: 'SUB_001', buildingType: 'residential', bounds: { x: 300, y: 200, width: 100, height: 60, height3D: 120 } },
+        { id: 2, groupId: 'GROUP_002', subGroupId: 'SUB_001', buildingType: 'commercial', bounds: { x: 500, y: 400, width: 120, height: 80, height3D: 180 } },
+        { id: 3, groupId: 'GROUP_003', subGroupId: 'SUB_002', buildingType: 'industrial', bounds: { x: 400, y: 300, width: 80, height: 50, height3D: 80 } },
+        { id: 4, groupId: 'GROUP_004', subGroupId: 'SUB_003', buildingType: 'residential', bounds: { x: 350, y: 350, width: 90, height: 70, height3D: 100 } },
+        { id: 5, groupId: 'GROUP_005', subGroupId: 'SUB_003', buildingType: 'commercial', bounds: { x: 450, y: 250, width: 110, height: 90, height3D: 200 } },
+        { id: 6, groupId: 'GROUP_006', subGroupId: 'SUB_004', buildingType: 'industrial', bounds: { x: 600, y: 350, width: 130, height: 100, height3D: 60 } }
     ]);
     const [drawingData, setDrawingData] = useState([]);
     const [isDrawing, setIsDrawing] = useState(false);
@@ -37,6 +41,14 @@ const KiwiSmartApp = () => {
     const [showBuildingOutlines, setShowBuildingOutlines] = useState(false);
 
     const fileInputRef = useRef(null);
+    const [is3DView, setIs3DView] = useState(false);
+    const canvasRef = useRef(null);
+    const sceneRef = useRef(null);
+    const cameraRef = useRef(null);
+    const rendererRef = useRef(null);
+    const controlsRef = useRef(null);
+    const animationRef = useRef(null);
+    const buildingMeshesRef = useRef([]);
 
     // Translations
     const translations = {
@@ -130,7 +142,8 @@ const KiwiSmartApp = () => {
             deleteSelection: 'Delete selection',
             manualDrawingAdded: 'Manual drawing added',
             allDrawingsDeleted: 'All drawings deleted',
-            buildingOutlinesToggled: 'Building outlines toggled'
+            buildingOutlinesToggled: 'Building outlines toggled',
+            toggle3D: 'Toggle 3D View'
         },
         zh: {
             appTitle: 'KiwiSmart',
@@ -222,7 +235,8 @@ const KiwiSmartApp = () => {
             deleteSelection: '刪除選取項目',
             manualDrawingAdded: '手動繪圖已添加',
             allDrawingsDeleted: '所有繪圖已刪除',
-            buildingOutlinesToggled: '建築物輪廓已切換'
+            buildingOutlinesToggled: '建築物輪廓已切換',
+            toggle3D: '切換 3D 視圖'
         }
     };
 
@@ -234,8 +248,405 @@ const KiwiSmartApp = () => {
         { id: 'manual', icon: '✏️', label: t.manualLabel },
         { id: 'delete', icon: '🗑️', label: t.deleteLabel },
         { id: 'undo', icon: '↶', label: t.undo },
-        { id: 'redo', icon: '↷', label: t.redo }
+        { id: 'redo', icon: '↷', label: t.redo },
+        { id: '3d', icon: '📐', label: t.toggle3D }
     ];
+
+    // Enhanced Three.js Setup with proper OrbitControls
+    useEffect(() => {
+        if (is3DView && canvasRef.current && labelData.length > 0) {
+            // Clean up previous scene
+            if (animationRef.current) {
+                cancelAnimationFrame(animationRef.current);
+            }
+            if (rendererRef.current) {
+                rendererRef.current.dispose();
+            }
+
+            // Initialize Scene
+            sceneRef.current = new THREE.Scene();
+            sceneRef.current.background = new THREE.Color(0x87CEEB); // Sky blue background
+
+            // Calculate center point of all buildings
+            const validBuildings = labelData.filter(b => b.bounds && typeof b.bounds.x === 'number' && typeof b.bounds.y === 'number');
+            
+            if (validBuildings.length === 0) {
+                console.warn('No valid buildings found for 3D rendering');
+                return;
+            }
+            
+            console.log(`Rendering ${validBuildings.length} buildings in 3D`);
+            
+            const centerX = validBuildings.reduce((sum, b) => sum + (b.bounds.x + (b.bounds.width || 0) / 2), 0) / validBuildings.length;
+            const centerY = validBuildings.reduce((sum, b) => sum + (b.bounds.y + (b.bounds.height || 0) / 2), 0) / validBuildings.length;
+            
+            console.log('Scene center:', { centerX, centerY });
+
+            // Initialize Camera with better positioning
+            const aspect = canvasRef.current.clientWidth / canvasRef.current.clientHeight;
+            cameraRef.current = new THREE.PerspectiveCamera(75, aspect, 0.1, 50000);
+            
+            // Calculate optimal camera distance based on data spread
+            const maxDistance = Math.max(
+                ...validBuildings.map(b => Math.sqrt(Math.pow(b.bounds.x - centerX, 2) + Math.pow(b.bounds.y - centerY, 2)))
+            );
+            const cameraDistance = Math.max(maxDistance * 3, 1000);
+            
+            cameraRef.current.position.set(centerX + cameraDistance * 0.7, cameraDistance * 0.8, centerY + cameraDistance * 0.7);
+            cameraRef.current.lookAt(centerX, 0, centerY);
+            
+            console.log('Camera positioned at:', cameraRef.current.position);
+
+            // Initialize Renderer
+            rendererRef.current = new THREE.WebGLRenderer({ 
+                canvas: canvasRef.current, 
+                antialias: true,
+                alpha: true 
+            });
+            rendererRef.current.setSize(canvasRef.current.clientWidth, canvasRef.current.clientHeight);
+            rendererRef.current.setPixelRatio(window.devicePixelRatio);
+            rendererRef.current.shadowMap.enabled = true;
+            rendererRef.current.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Manual OrbitControls Implementation (since CDN version may not work)
+            const controls = {
+                object: cameraRef.current,
+                domElement: canvasRef.current,
+                target: new THREE.Vector3(centerX, 0, centerY),
+                minDistance: 50,
+                maxDistance: cameraDistance * 3,
+                enableDamping: true,
+                dampingFactor: 0.05,
+                enableZoom: true,
+                enableRotate: true,
+                enablePan: true,
+                rotateSpeed: 1.0,
+                zoomSpeed: 1.0,
+                panSpeed: 1.0,
+                
+                spherical: new THREE.Spherical(),
+                sphericalDelta: new THREE.Spherical(),
+                scale: 1,
+                panOffset: new THREE.Vector3(),
+                zoomChanged: false,
+
+                mouseButtons: {
+                    LEFT: THREE.MOUSE.ROTATE,
+                    MIDDLE: THREE.MOUSE.DOLLY,
+                    RIGHT: THREE.MOUSE.PAN
+                },
+
+                // Manual zoom methods for menu integration
+                zoomIn: function() {
+                    this.spherical.radius *= 0.8;
+                    this.spherical.radius = Math.max(this.minDistance, this.spherical.radius);
+                },
+
+                zoomOut: function() {
+                    this.spherical.radius *= 1.25;
+                    this.spherical.radius = Math.min(this.maxDistance, this.spherical.radius);
+                },
+
+                reset: function() {
+                    this.spherical.setFromVector3(this.object.position.clone().sub(this.target));
+                    this.sphericalDelta.set(0, 0, 0);
+                    this.panOffset.set(0, 0, 0);
+                },
+
+                update: function() {
+                    const offset = new THREE.Vector3();
+                    const quat = new THREE.Quaternion().setFromUnitVectors(this.object.up, new THREE.Vector3(0, 1, 0));
+                    const quatInverse = quat.clone().invert();
+
+                    offset.copy(this.object.position).sub(this.target);
+                    offset.applyQuaternion(quat);
+
+                    this.spherical.setFromVector3(offset);
+
+                    if (this.enableDamping) {
+                        this.spherical.theta += this.sphericalDelta.theta * this.dampingFactor;
+                        this.spherical.phi += this.sphericalDelta.phi * this.dampingFactor;
+                    } else {
+                        this.spherical.theta += this.sphericalDelta.theta;
+                        this.spherical.phi += this.sphericalDelta.phi;
+                    }
+
+                    this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));
+                    this.spherical.radius = Math.max(this.minDistance, Math.min(this.maxDistance, this.spherical.radius));
+
+                    this.target.add(this.panOffset);
+
+                    offset.setFromSpherical(this.spherical);
+                    offset.applyQuaternion(quatInverse);
+
+                    this.object.position.copy(this.target).add(offset);
+                    this.object.lookAt(this.target);
+
+                    if (this.enableDamping) {
+                        this.sphericalDelta.theta *= (1 - this.dampingFactor);
+                        this.sphericalDelta.phi *= (1 - this.dampingFactor);
+                    } else {
+                        this.sphericalDelta.set(0, 0, 0);
+                    }
+
+                    this.panOffset.set(0, 0, 0);
+                    this.scale = 1;
+                }
+            };
+
+            // Initialize spherical coordinates from current camera position
+            const initialOffset = cameraRef.current.position.clone().sub(controls.target);
+            controls.spherical.setFromVector3(initialOffset);
+
+            controlsRef.current = controls;
+
+            // Mouse interaction for controls
+            let isMouseDown = false;
+            let mouseButton = -1;
+            const lastMouse = new THREE.Vector2();
+
+            const onMouseDown = (event) => {
+                isMouseDown = true;
+                mouseButton = event.button;
+                lastMouse.set(event.clientX, event.clientY);
+            };
+
+            const onMouseMove = (event) => {
+                if (!isMouseDown) return;
+
+                const deltaX = event.clientX - lastMouse.x;
+                const deltaY = event.clientY - lastMouse.y;
+
+                if (mouseButton === 0) { // Left button - rotate
+                    controls.sphericalDelta.theta -= deltaX * 0.01;
+                    controls.sphericalDelta.phi -= deltaY * 0.01;
+                }
+
+                lastMouse.set(event.clientX, event.clientY);
+            };
+
+            const onMouseUp = () => {
+                isMouseDown = false;
+                mouseButton = -1;
+            };
+
+            const onWheel = (event) => {
+                event.preventDefault();
+                if (controlsRef.current) {
+                    if (event.deltaY < 0) {
+                        controlsRef.current.zoomIn();
+                    } else {
+                        controlsRef.current.zoomOut();
+                    }
+                }
+            };
+
+            canvasRef.current.addEventListener('mousedown', onMouseDown);
+            canvasRef.current.addEventListener('mousemove', onMouseMove);
+            canvasRef.current.addEventListener('mouseup', onMouseUp);
+            canvasRef.current.addEventListener('wheel', onWheel);
+
+            // Enhanced Ground Plane with dynamic sizing
+            const groundSize = Math.max(maxDistance * 4, 2000);
+            const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 50, 50);
+            const groundMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0x90EE90,
+                transparent: true,
+                opacity: 0.6
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.set(centerX, -5, centerY);
+            ground.receiveShadow = true;
+            sceneRef.current.add(ground);
+
+            // Grid helper with dynamic size
+            const gridHelper = new THREE.GridHelper(groundSize, Math.min(100, groundSize / 50), 0x888888, 0xcccccc);
+            gridHelper.position.set(centerX, 0, centerY);
+            sceneRef.current.add(gridHelper);
+
+            // Clear previous building meshes
+            buildingMeshesRef.current = [];
+
+            // Create enhanced 3D buildings
+            validBuildings.forEach((building, index) => {
+                console.log(`Creating building ${index + 1}:`, building);
+                
+                // Calculate building dimensions with minimum sizes
+                const width = Math.max(building.bounds.width || 20, 10);
+                const depth = Math.max(building.bounds.height || 20, 10);
+                const height = Math.max(building.bounds.height3D || 30, 5);
+
+                console.log(`Building dimensions: ${width} x ${depth} x ${height}`);
+
+                // Create building geometry
+                const geometry = new THREE.BoxGeometry(width, height, depth);
+                
+                // Choose material based on building type with better colors
+                let material;
+                const buildingTypeNormalized = (building.buildingType || 'residential').toLowerCase();
+                
+                if (buildingTypeNormalized.includes('residential') || buildingTypeNormalized.includes('house')) {
+                    material = new THREE.MeshLambertMaterial({ 
+                        color: 0x4CAF50, // Green
+                        transparent: false,
+                        opacity: 1.0
+                    });
+                } else if (buildingTypeNormalized.includes('commercial') || buildingTypeNormalized.includes('office') || buildingTypeNormalized.includes('retail')) {
+                    material = new THREE.MeshLambertMaterial({ 
+                        color: 0x2196F3, // Blue
+                        transparent: false,
+                        opacity: 1.0
+                    });
+                } else if (buildingTypeNormalized.includes('industrial') || buildingTypeNormalized.includes('warehouse')) {
+                    material = new THREE.MeshLambertMaterial({ 
+                        color: 0xFF9800, // Orange
+                        transparent: false,
+                        opacity: 1.0
+                    });
+                } else {
+                    material = new THREE.MeshLambertMaterial({ 
+                        color: 0x9E9E9E, // Gray for unknown types
+                        transparent: false,
+                        opacity: 1.0
+                    });
+                }
+
+                // Create building mesh
+                const buildingMesh = new THREE.Mesh(geometry, material);
+                
+                // Position building
+                const posX = building.bounds.x;
+                const posY = height / 2;
+                const posZ = building.bounds.y;
+                
+                buildingMesh.position.set(posX, posY, posZ);
+                console.log(`Building ${index + 1} positioned at:`, buildingMesh.position);
+
+                buildingMesh.castShadow = true;
+                buildingMesh.receiveShadow = true;
+                buildingMesh.userData = { building, index };
+
+                sceneRef.current.add(buildingMesh);
+                buildingMeshesRef.current.push(buildingMesh);
+
+                // Add building outline
+                const edges = new THREE.EdgesGeometry(geometry);
+                const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1 });
+                const wireframe = new THREE.LineSegments(edges, lineMaterial);
+                wireframe.position.copy(buildingMesh.position);
+                sceneRef.current.add(wireframe);
+            });
+            
+            console.log(`Created ${buildingMeshesRef.current.length} building meshes`);
+
+            // Enhanced Lighting System
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.0);
+            sceneRef.current.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(centerX + cameraDistance, cameraDistance, centerY + cameraDistance);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.1;
+            directionalLight.shadow.camera.far = cameraDistance * 3;
+            directionalLight.shadow.camera.left = -cameraDistance;
+            directionalLight.shadow.camera.right = cameraDistance;
+            directionalLight.shadow.camera.top = cameraDistance;
+            directionalLight.shadow.camera.bottom = -cameraDistance;
+            sceneRef.current.add(directionalLight);
+
+            // Add hemisphere light for more natural lighting
+            const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x8B4513, 0.6);
+            sceneRef.current.add(hemisphereLight);
+            
+            console.log('3D scene setup complete');
+
+            // Animation Loop
+            const animate = () => {
+                animationRef.current = requestAnimationFrame(animate);
+                
+                if (controlsRef.current) {
+                    controlsRef.current.update();
+                }
+                
+                if (rendererRef.current && sceneRef.current && cameraRef.current) {
+                    rendererRef.current.render(sceneRef.current, cameraRef.current);
+                }
+            };
+            animate();
+
+            // Handle Resize
+            const handleResize = () => {
+                if (canvasRef.current && cameraRef.current && rendererRef.current) {
+                    const width = canvasRef.current.clientWidth;
+                    const height = canvasRef.current.clientHeight;
+                    rendererRef.current.setSize(width, height);
+                    cameraRef.current.aspect = width / height;
+                    cameraRef.current.updateProjectionMatrix();
+                }
+            };
+            window.addEventListener('resize', handleResize);
+
+            return () => {
+                window.removeEventListener('resize', handleResize);
+                canvasRef.current?.removeEventListener('mousedown', onMouseDown);
+                canvasRef.current?.removeEventListener('mousemove', onMouseMove);
+                canvasRef.current?.removeEventListener('mouseup', onMouseUp);
+                canvasRef.current?.removeEventListener('wheel', onWheel);
+                
+                if (animationRef.current) {
+                    cancelAnimationFrame(animationRef.current);
+                }
+                if (rendererRef.current) {
+                    rendererRef.current.dispose();
+                }
+                buildingMeshesRef.current = [];
+            };
+        }
+    }, [is3DView, labelData]);
+
+    // Enhanced coordinate translation functions
+    const translateCoordinates = (coords) => {
+        if (!coords || !coords.length) return { x: 0, y: 0 };
+        
+        // Get first coordinate pair
+        const firstCoord = coords[0];
+        const lng = firstCoord[0];
+        const lat = firstCoord[1];
+        
+        // Convert to local coordinate system
+        // Scale factor to make coordinates reasonable for 3D scene
+        const scaleFactor = 1000;
+        
+        return {
+            x: lng * scaleFactor,
+            y: lat * scaleFactor
+        };
+    };
+
+    // Calculate bounds from coordinate array
+    const calculateBounds = (coords) => {
+        if (!coords || !coords.length) return { width: 50, height: 50 };
+        
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        
+        coords.forEach(coord => {
+            const x = coord[0] * 1000;
+            const y = coord[1] * 1000;
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+        });
+        
+        return {
+            width: Math.max(maxX - minX, 10),
+            height: Math.max(maxY - minY, 10)
+        };
+    };
 
     // Event Handlers
     const handleFileUpload = (event) => {
@@ -244,8 +655,93 @@ const KiwiSmartApp = () => {
             setUploadedFile(file);
             addActivityLog('fileUploaded', 'success');
 
-            // Check if file is an image
-            if (file.type.startsWith('image/')) {
+            if (file.type === 'application/json' || file.name.endsWith('.json') || file.name.endsWith('.geojson')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const geojson = JSON.parse(e.target.result);
+                        console.log('GeoJSON loaded:', geojson);
+                        console.log('Features count:', geojson.features?.length);
+                        
+                        const newLabelData = geojson.features.map((feature, index) => {
+                            console.log(`Processing feature ${index}:`, feature);
+                            
+                            let coords = [];
+                            let bounds = { x: 0, y: 0, width: 50, height: 50 };
+                            
+                            // Handle different geometry types
+                            if (feature.geometry) {
+                                switch (feature.geometry.type) {
+                                    case 'Polygon':
+                                        coords = feature.geometry.coordinates[0];
+                                        break;
+                                    case 'MultiPolygon':
+                                        coords = feature.geometry.coordinates[0][0];
+                                        break;
+                                    case 'Point':
+                                        coords = [feature.geometry.coordinates];
+                                        break;
+                                    default:
+                                        console.warn('Unsupported geometry type:', feature.geometry.type);
+                                        coords = [[0, 0]];
+                                }
+                                
+                                // Calculate center and bounds
+                                if (coords && coords.length > 0) {
+                                    const coordBounds = calculateBounds(coords);
+                                    const centerCoord = translateCoordinates(coords);
+                                    
+                                    bounds = {
+                                        x: centerCoord.x,
+                                        y: centerCoord.y,
+                                        width: Math.max(coordBounds.width, 20),
+                                        height: Math.max(coordBounds.height, 20)
+                                    };
+                                }
+                            }
+                            
+                            const properties = feature.properties || {};
+                            
+                            // Try different height attributes
+                            const heightAttr = properties.height || 
+                                             properties.HEIGHT || 
+                                             properties.EW_HA2013 || 
+                                             properties.height3D || 
+                                             properties.floors * 3 || 
+                                             Math.random() * 100 + 30;
+                            
+                            // Try different building type attributes
+                            const buildingType = properties.type || 
+                                               properties.building || 
+                                               properties.landuse || 
+                                               properties.amenity || 
+                                               ['residential', 'commercial', 'industrial'][Math.floor(Math.random() * 3)];
+                            
+                            const building = {
+                                id: index + 1,
+                                groupId: `GROUP_${String(index + 1).padStart(3, '0')}`,
+                                subGroupId: `SUB_${String(Math.floor(index / 10) + 1).padStart(3, '0')}`,
+                                buildingType: buildingType,
+                                bounds: {
+                                    ...bounds,
+                                    height3D: Math.max(heightAttr, 10)
+                                }
+                            };
+                            
+                            console.log(`Building ${index + 1}:`, building);
+                            return building;
+                        });
+                        
+                        console.log('Final labelData:', newLabelData);
+                        setLabelData(newLabelData);
+                        addActivityLog('geojsonProcessed', 'success');
+                    } catch (error) {
+                        console.error('Error parsing GeoJSON:', error);
+                        addActivityLog('fileUploadFailed', 'warning');
+                    }
+                };
+                reader.readAsText(file);
+            } else if (file.type.startsWith('image/')) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     setMapBackground(e.target.result);
@@ -254,7 +750,6 @@ const KiwiSmartApp = () => {
                 reader.readAsDataURL(file);
             }
 
-            // Simulate file processing
             setTimeout(() => {
                 setProjectData({
                     name: file.name,
@@ -285,12 +780,16 @@ const KiwiSmartApp = () => {
                     return prev + 2;
                 });
             }, 100);
+        } else if (toolId === '3d') {
+            setIs3DView(!is3DView);
+            addActivityLog('viewToggled3D', 'info');
+        } else {
+            setSelectedTool(toolId);
+            addActivityLog(`toolSelected_${toolId}`, 'info');
         }
-        setSelectedTool(toolId);
-        addActivityLog(`toolSelected_${toolId}`, 'info');
     };
 
-    // Drawing functions
+    // Drawing Functions
     const saveToHistory = (newDrawingData) => {
         const newHistory = drawingHistory.slice(0, historyIndex + 1);
         newHistory.push([...newDrawingData]);
@@ -299,7 +798,7 @@ const KiwiSmartApp = () => {
     };
 
     const handleMouseDown = (e) => {
-        if (selectedTool === 'manual') {
+        if (selectedTool === 'manual' && !is3DView) {
             setIsDrawing(true);
             const rect = e.currentTarget.getBoundingClientRect();
             const x = (e.clientX - rect.left) / (zoomLevel / 100);
@@ -309,7 +808,7 @@ const KiwiSmartApp = () => {
     };
 
     const handleMouseMove = (e) => {
-        if (isDrawing && selectedTool === 'manual') {
+        if (isDrawing && selectedTool === 'manual' && !is3DView) {
             const rect = e.currentTarget.getBoundingClientRect();
             const x = (e.clientX - rect.left) / (zoomLevel / 100);
             const y = (e.clientY - rect.top) / (zoomLevel / 100);
@@ -318,7 +817,7 @@ const KiwiSmartApp = () => {
     };
 
     const handleMouseUp = () => {
-        if (isDrawing && selectedTool === 'manual' && currentPath.length > 1) {
+        if (isDrawing && selectedTool === 'manual' && currentPath.length > 1 && !is3DView) {
             const newDrawing = {
                 id: Date.now(),
                 path: currentPath,
@@ -368,14 +867,11 @@ const KiwiSmartApp = () => {
             language,
             mapBackground,
             labelData,
-            activityLogs: activityLogs.slice(0, 10) // Save last 10 logs
+            activityLogs: activityLogs.slice(0, 10)
         };
 
-        // Simulate save to local storage or server
-        localStorage.setItem('kiwismart_project', JSON.stringify(projectToSave));
+        // Note: localStorage is not supported in Claude artifacts
         addActivityLog('projectSaved', 'success');
-
-        // Show success message
         alert(language === 'en' ? 'Project saved successfully!' : '專案儲存成功！');
     };
 
@@ -395,12 +891,9 @@ const KiwiSmartApp = () => {
             activityLogs: activityLogs.slice(0, 10)
         };
 
-        // Save with new name
-        localStorage.setItem(`kiwismart_project_${saveAsName}`, JSON.stringify(projectToSave));
         addActivityLog('projectSavedAs', 'success');
         setShowSaveModal(false);
         setSaveAsName('');
-
         alert(`${language === 'en' ? 'Project saved as' : '專案另存為'}: ${saveAsName}`);
     };
 
@@ -425,18 +918,28 @@ const KiwiSmartApp = () => {
                 setShowSaveModal(true);
                 break;
             case 'zoomIn':
-                setZoomLevel(prev => {
-                    const newZoom = Math.min(prev + 25, 200);
-                    addActivityLog(`zoomedIn_${newZoom}`, 'info');
-                    return newZoom;
-                });
+                if (is3DView && controlsRef.current) {
+                    controlsRef.current.zoomIn();
+                    addActivityLog('zoomedIn_3D', 'info');
+                } else {
+                    setZoomLevel(prev => {
+                        const newZoom = Math.min(prev + 25, 200);
+                        addActivityLog(`zoomedIn_${newZoom}`, 'info');
+                        return newZoom;
+                    });
+                }
                 break;
             case 'zoomOut':
-                setZoomLevel(prev => {
-                    const newZoom = Math.max(prev - 25, 50);
-                    addActivityLog(`zoomedOut_${newZoom}`, 'info');
-                    return newZoom;
-                });
+                if (is3DView && controlsRef.current) {
+                    controlsRef.current.zoomOut();
+                    addActivityLog('zoomedOut_3D', 'info');
+                } else {
+                    setZoomLevel(prev => {
+                        const newZoom = Math.max(prev - 25, 50);
+                        addActivityLog(`zoomedOut_${newZoom}`, 'info');
+                        return newZoom;
+                    });
+                }
                 break;
             case 'fullScreen':
                 setIsFullScreen(!isFullScreen);
@@ -479,7 +982,7 @@ const KiwiSmartApp = () => {
             timestamp: new Date().toLocaleString(),
             type
         };
-        setActivityLogs(prev => [newLog, ...prev.slice(0, 49)]); // Keep max 50 logs
+        setActivityLogs(prev => [newLog, ...prev.slice(0, 49)]);
     };
 
     const handleDragOver = (e) => {
@@ -515,7 +1018,8 @@ const KiwiSmartApp = () => {
                 exportDate: new Date().toISOString(),
                 settings: {
                     language,
-                    zoomLevel
+                    zoomLevel,
+                    is3DView
                 }
             },
             labels: labelData,
@@ -568,7 +1072,6 @@ const KiwiSmartApp = () => {
                 <div className="row justify-content-center">
                     <div className="col-md-8 col-lg-6">
                         <div className="text-center">
-                            {/* Language Selector */}
                             <div className="mb-4">
                                 <div className="btn-group">
                                     <button
@@ -674,7 +1177,6 @@ const KiwiSmartApp = () => {
                 </div>
             </div>
 
-            {/* Hidden File Input */}
             <input
                 ref={fileInputRef}
                 type="file"
@@ -687,11 +1189,9 @@ const KiwiSmartApp = () => {
 
     const ProjectInterface = () => (
         <div className={`vh-100 d-flex flex-column ${isFullScreen ? 'position-fixed top-0 start-0 w-100 h-100' : ''}`} style={{ zIndex: isFullScreen ? 9999 : 'auto' }}>
-            {/* Navigation Bar */}
             <nav className="navbar navbar-dark bg-dark px-3" style={{ minHeight: '48px' }}>
                 <div className="d-flex w-100 justify-content-between align-items-center">
                     <div className="d-flex">
-                        {/* File Menu */}
                         <div className="dropdown me-3">
                             <button
                                 className="btn btn-dark btn-sm dropdown-toggle border-0"
@@ -726,7 +1226,6 @@ const KiwiSmartApp = () => {
                             )}
                         </div>
 
-                        {/* Edit Menu */}
                         <div className="dropdown me-3">
                             <button
                                 className="btn btn-dark btn-sm dropdown-toggle border-0"
@@ -761,7 +1260,6 @@ const KiwiSmartApp = () => {
                             )}
                         </div>
 
-                        {/* View Menu */}
                         <div className="dropdown me-3">
                             <button
                                 className="btn btn-dark btn-sm dropdown-toggle border-0"
@@ -773,19 +1271,21 @@ const KiwiSmartApp = () => {
                             {activeDropdown === 'view' && (
                                 <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
                                     <button className="dropdown-item" onClick={() => handleMenuClick('zoomIn')}>
-                                        🔍 {t.zoomIn} ({zoomLevel}%)
+                                        🔍 {t.zoomIn} {is3DView ? '' : `(${zoomLevel}%)`}
                                     </button>
                                     <button className="dropdown-item" onClick={() => handleMenuClick('zoomOut')}>
-                                        🔍 {t.zoomOut} ({zoomLevel}%)
+                                        🔍 {t.zoomOut} {is3DView ? '' : `(${zoomLevel}%)`}
                                     </button>
                                     <button className="dropdown-item" onClick={() => handleMenuClick('fullScreen')}>
                                         ⛶ {t.fullScreen}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleToolClick('3d')}>
+                                        📐 {t.toggle3D}
                                     </button>
                                 </div>
                             )}
                         </div>
 
-                        {/* Window Menu */}
                         <div className="dropdown me-3">
                             <button
                                 className="btn btn-dark btn-sm dropdown-toggle border-0"
@@ -806,7 +1306,6 @@ const KiwiSmartApp = () => {
                             )}
                         </div>
 
-                        {/* Help Menu */}
                         <div className="dropdown">
                             <button
                                 className="btn btn-dark btn-sm dropdown-toggle border-0"
@@ -832,7 +1331,6 @@ const KiwiSmartApp = () => {
                     </div>
 
                     <div className="d-flex align-items-center">
-                        {/* Language Switcher */}
                         <div className="btn-group me-3">
                             <button
                                 className={`btn btn-sm ${language === 'en' ? 'btn-light' : 'btn-outline-light'}`}
@@ -848,7 +1346,6 @@ const KiwiSmartApp = () => {
                             </button>
                         </div>
 
-                        {/* Window Controls */}
                         <button className="btn btn-outline-light btn-sm me-1" onClick={() => handleMenuClick('minimize')}>─</button>
                         <button className="btn btn-outline-light btn-sm me-1" onClick={() => handleMenuClick('fullScreen')}>
                             {isFullScreen ? '🗗' : '☐'}
@@ -858,151 +1355,157 @@ const KiwiSmartApp = () => {
                 </div>
             </nav>
 
-            {/* Main Content */}
             <div className="flex-grow-1 position-relative bg-light" onClick={() => setActiveDropdown(null)}>
-                {/* Map Area Container with Proper Zoom */}
                 <div className="h-100 position-relative overflow-hidden">
-                    <div
-                        className="h-100 position-relative d-flex align-items-center justify-content-center"
-                        style={{
-                            backgroundImage: mapBackground
-                                ? `url(${mapBackground})`
-                                : 'linear-gradient(45deg, #e9ecef 25%, transparent 25%), linear-gradient(-45deg, #e9ecef 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e9ecef 75%), linear-gradient(-45deg, transparent 75%, #e9ecef 75%)',
-                            backgroundSize: mapBackground ? 'cover' : '20px 20px',
-                            backgroundPosition: mapBackground ? 'center' : '0 0, 0 10px, 10px -10px, -10px 0px',
-                            backgroundRepeat: mapBackground ? 'no-repeat' : 'repeat',
-                            transform: `scale(${zoomLevel / 100})`,
-                            transformOrigin: 'center',
-                            transition: 'transform 0.3s ease-in-out',
-                            cursor: selectedTool === 'manual' ? 'crosshair' : selectedTool === 'delete' ? 'not-allowed' : 'default'
-                        }}
-                        onMouseDown={handleMouseDown}
-                        onMouseMove={handleMouseMove}
-                        onMouseUp={handleMouseUp}
-                        onMouseLeave={() => {
-                            setIsDrawing(false);
-                            setCurrentPath([]);
-                        }}
-                    >
-                        {/* Map placeholder or uploaded image info */}
-                        {!mapBackground ? (
-                            <div className="text-center text-muted">
-                                <div style={{ fontSize: '4rem' }}>📍</div>
-                                <h4>{t.satelliteMapView}</h4>
-                                {projectData && (
-                                    <div className="mt-3">
-                                        <small className="badge bg-primary">{projectData.name}</small>
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
+                    {is3DView ? (
+                        <div className="h-100 position-relative">
+                            <canvas
+                                ref={canvasRef}
+                                className="w-100 h-100"
+                                style={{ display: 'block', cursor: 'grab' }}
+                            />
+                            {/* 3D View Info Panel */}
                             <div className="position-absolute top-0 end-0 m-3" style={{
-                                transform: `scale(${100 / zoomLevel})`,
-                                transformOrigin: 'top right'
+                                zIndex: 1002,
+                                background: 'rgba(0,0,0,0.8)',
+                                color: 'white',
+                                padding: '10px',
+                                borderRadius: '5px'
                             }}>
-                                <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
-                                    <div className="card-body p-2">
-                                        <small>
-                                            📸 {projectData?.name}<br />
-                                            {Math.round(projectData?.size / 1024)} KB<br />
-                                            Zoom: {zoomLevel}%
-                                        </small>
-                                    </div>
-                                </div>
+                                <small>
+                                    📐 3D View Active<br />
+                                    Buildings: {labelData.length}<br />
+                                    Mouse: Drag to rotate<br />
+                                    Wheel: Zoom in/out
+                                </small>
                             </div>
-                        )}
-
-                        {/* SVG Drawing Layer */}
-                        <svg
-                            className="position-absolute top-0 start-0 w-100 h-100"
+                        </div>
+                    ) : (
+                        <div
+                            className="h-100 position-relative d-flex align-items-center justify-content-center"
                             style={{
-                                pointerEvents: 'none',
-                                zIndex: 10
+                                backgroundImage: mapBackground
+                                    ? `url(${mapBackground})`
+                                    : 'linear-gradient(45deg, #e9ecef 25%, transparent 25%), linear-gradient(-45deg, #e9ecef 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e9ecef 75%), linear-gradient(-45deg, transparent 75%, #e9ecef 75%)',
+                                backgroundSize: mapBackground ? 'cover' : '20px 20px',
+                                backgroundPosition: mapBackground ? 'center' : '0 0, 0 10px, 10px -10px, -10px 0px',
+                                backgroundRepeat: mapBackground ? 'no-repeat' : 'repeat',
+                                transform: `scale(${zoomLevel / 100})`,
+                                transformOrigin: 'center',
+                                transition: 'transform 0.3s ease-in-out',
+                                cursor: selectedTool === 'manual' ? 'crosshair' : selectedTool === 'delete' ? 'not-allowed' : 'default'
+                            }}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={() => {
+                                setIsDrawing(false);
+                                setCurrentPath([]);
                             }}
                         >
-                            {/* Existing Drawings */}
-                            {drawingData.map((drawing) => (
-                                <g key={drawing.id}>
+                            {!mapBackground ? (
+                                <div className="text-center text-muted">
+                                    <div style={{ fontSize: '4rem' }}>📍</div>
+                                    <h4>{t.satelliteMapView}</h4>
+                                    {projectData && (
+                                        <div className="mt-3">
+                                            <small className="badge bg-primary">{projectData.name}</small>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="position-absolute top-0 end-0 m-3" style={{
+                                    transform: `scale(${100 / zoomLevel})`,
+                                    transformOrigin: 'top right'
+                                }}>
+                                    <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
+                                        <div className="card-body p-2">
+                                            <small>
+                                                📸 {projectData?.name || 'Unknown'}<br />
+                                                {projectData?.size ? `${Math.round(projectData.size / 1024)} KB` : ''}<br />
+                                                Zoom: {zoomLevel}%
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <svg
+                                className="position-absolute top-0 start-0 w-100 h-100"
+                                style={{
+                                    pointerEvents: 'none',
+                                    zIndex: 10
+                                }}
+                            >
+                                {drawingData.map((drawing) => (
+                                    <g key={drawing.id}>
+                                        <path
+                                            d={`M ${drawing.path.map(point => `${point.x},${point.y}`).join(' L ')}`}
+                                            stroke={drawing.color}
+                                            strokeWidth="2"
+                                            fill="none"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        />
+                                    </g>
+                                ))}
+                                {currentPath.length > 1 && (
                                     <path
-                                        d={`M ${drawing.path.map(point => `${point.x},${point.y}`).join(' L ')}`}
-                                        stroke={drawing.color}
+                                        d={`M ${currentPath.map(point => `${point.x},${point.y}`).join(' L ')}`}
+                                        stroke="#ff0000"
                                         strokeWidth="2"
                                         fill="none"
                                         strokeLinecap="round"
                                         strokeLinejoin="round"
                                     />
-                                </g>
-                            ))}
+                                )}
+                            </svg>
 
-                            {/* Current Drawing Path */}
-                            {currentPath.length > 1 && (
-                                <path
-                                    d={`M ${currentPath.map(point => `${point.x},${point.y}`).join(' L ')}`}
-                                    stroke="#ff0000"
-                                    strokeWidth="2"
-                                    fill="none"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                />
+                            {showBuildingOutlines && (
+                                <>
+                                    {labelData.map((building) => (
+                                        <div
+                                            key={building.id}
+                                            className="position-absolute border border-danger border-2 rounded"
+                                            style={{
+                                                top: `${building.bounds.y}px`,
+                                                left: `${building.bounds.x}px`,
+                                                width: `${building.bounds.width}px`,
+                                                height: `${building.bounds.height}px`,
+                                                opacity: 0.8,
+                                                animation: 'pulse 2s infinite'
+                                            }}
+                                        ></div>
+                                    ))}
+                                </>
                             )}
-                        </svg>
+                        </div>
+                    )}
 
-                        {/* Building Outlines - Now Optional */}
-                        {showBuildingOutlines && (
-                            <>
-                                <div
-                                    className="position-absolute border border-danger border-2 rounded"
-                                    style={{
-                                        top: '25%',
-                                        right: '33%',
-                                        width: '100px',
-                                        height: '60px',
-                                        opacity: 0.8,
-                                        animation: 'pulse 2s infinite'
-                                    }}
-                                ></div>
-                                <div
-                                    className="position-absolute border border-danger border-2 rounded"
-                                    style={{
-                                        bottom: '33%',
-                                        right: '25%',
-                                        width: '120px',
-                                        height: '80px',
-                                        opacity: 0.8,
-                                        animation: 'pulse 2s infinite'
-                                    }}
-                                ></div>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Map Controls - Fixed Position */}
                     <div className="position-absolute top-0 start-0 m-3" style={{ zIndex: 1001 }}>
                         <div className="btn-group-vertical" role="group">
                             <button
                                 className="btn btn-light btn-sm border"
                                 onClick={() => handleMenuClick('zoomIn')}
-                                title="Zoom In"
-                                disabled={zoomLevel >= 200}
+                                title={is3DView ? "Zoom In (3D)" : "Zoom In"}
                             >
                                 ➕
                             </button>
                             <button
                                 className="btn btn-light btn-sm border"
                                 onClick={() => handleMenuClick('zoomOut')}
-                                title="Zoom Out"
-                                disabled={zoomLevel <= 50}
+                                title={is3DView ? "Zoom Out (3D)" : "Zoom Out"}
                             >
                                 ➖
                             </button>
                             <button
                                 className="btn btn-info btn-sm border"
-                                title={`Current Zoom: ${zoomLevel}%`}
+                                title={`Current View: ${is3DView ? '3D Camera' : `2D ${zoomLevel}%`}`}
                                 disabled
                             >
-                                {zoomLevel}%
+                                {is3DView ? '3D' : `${zoomLevel}%`}
                             </button>
-                            {mapBackground && (
+                            {mapBackground && !is3DView && (
                                 <>
                                     <button
                                         className="btn btn-warning btn-sm border mt-2"
@@ -1025,31 +1528,34 @@ const KiwiSmartApp = () => {
                                     </button>
                                 </>
                             )}
+                            <button
+                                className="btn btn-primary btn-sm border mt-2"
+                                onClick={() => handleToolClick('3d')}
+                                title={t.toggle3D}
+                            >
+                                📐
+                            </button>
                         </div>
                     </div>
 
-                    {/* Sidebar Tools - Fixed Position */}
                     <div className="position-absolute bottom-0 start-0 m-3 mb-5" style={{ zIndex: 1001 }}>
                         <div className="btn-group-vertical" role="group">
                             <button
-                                className={`btn btn-sm border mb-1 d-flex flex-column align-items-center py-2 ${sidebarPanel === 'activity' ? 'btn-primary' : 'btn-light'
-                                    }`}
+                                className={`btn btn-sm border mb-1 d-flex flex-column align-items-center py-2 ${sidebarPanel === 'activity' ? 'btn-primary' : 'btn-light'}`}
                                 onClick={() => setSidebarPanel(sidebarPanel === 'activity' ? null : 'activity')}
                             >
                                 📋
                                 <small className="mt-1" style={{ fontSize: '9px' }}>{t.activityLog}</small>
                             </button>
                             <button
-                                className={`btn btn-sm border mb-1 d-flex flex-column align-items-center py-2 ${sidebarPanel === 'table' ? 'btn-primary' : 'btn-light'
-                                    }`}
+                                className={`btn btn-sm border mb-1 d-flex flex-column align-items-center py-2 ${sidebarPanel === 'table' ? 'btn-primary' : 'btn-light'}`}
                                 onClick={() => setSidebarPanel(sidebarPanel === 'table' ? null : 'table')}
                             >
                                 📊
                                 <small className="mt-1" style={{ fontSize: '9px' }}>{t.labelTableSidebar}</small>
                             </button>
                             <button
-                                className={`btn btn-sm border d-flex flex-column align-items-center py-2 ${sidebarPanel === 'filters' ? 'btn-primary' : 'btn-light'
-                                    }`}
+                                className={`btn btn-sm border d-flex flex-column align-items-center py-2 ${sidebarPanel === 'filters' ? 'btn-primary' : 'btn-light'}`}
                                 onClick={() => setSidebarPanel(sidebarPanel === 'filters' ? null : 'filters')}
                             >
                                 🔍
@@ -1058,7 +1564,6 @@ const KiwiSmartApp = () => {
                         </div>
                     </div>
 
-                    {/* FAB Tools - Fixed Position */}
                     <div className="position-absolute bottom-0 end-0 m-3 mb-5" style={{ zIndex: 1001 }}>
                         {fabExpanded && (
                             <div className="d-flex align-items-center mb-3 p-2 rounded-pill" style={{
@@ -1067,8 +1572,7 @@ const KiwiSmartApp = () => {
                                 {fabTools.map((tool) => (
                                     <button
                                         key={tool.id}
-                                        className={`btn btn-sm rounded-circle me-2 d-flex align-items-center justify-content-center fab-tool ${selectedTool === tool.id ? 'btn-primary' : 'btn-light'
-                                            }`}
+                                        className={`btn btn-sm rounded-circle me-2 d-flex align-items-center justify-content-center fab-tool ${selectedTool === tool.id ? 'btn-primary' : 'btn-light'}`}
                                         style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}
                                         onClick={() => {
                                             if (tool.id === 'undo') {
@@ -1085,7 +1589,8 @@ const KiwiSmartApp = () => {
                                         disabled={
                                             (tool.id === 'undo' && historyIndex <= 0) ||
                                             (tool.id === 'redo' && historyIndex >= drawingHistory.length - 1) ||
-                                            (tool.id === 'delete' && drawingData.length === 0)
+                                            (tool.id === 'delete' && drawingData.length === 0) ||
+                                            (tool.id === 'manual' && is3DView)
                                         }
                                     >
                                         {tool.icon}
@@ -1102,7 +1607,6 @@ const KiwiSmartApp = () => {
                         </button>
                     </div>
 
-                    {/* Sidebar Panel - Fixed Position */}
                     {sidebarPanel && (
                         <div
                             className="card position-absolute shadow-lg border-0"
@@ -1146,6 +1650,7 @@ const KiwiSmartApp = () => {
                                                     <th>{t.groupId}</th>
                                                     <th>{t.subGroupId}</th>
                                                     <th>{t.buildingType}</th>
+                                                    <th>Height</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1158,6 +1663,7 @@ const KiwiSmartApp = () => {
                                                                 {t[item.buildingType]}
                                                             </span>
                                                         </td>
+                                                        <td>{item.bounds.height3D}m</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -1169,23 +1675,43 @@ const KiwiSmartApp = () => {
                                     <div>
                                         <div className="mb-3">
                                             <div className="d-flex justify-content-between align-items-center mb-2">
-                                                <strong>Drawing Tools Status:</strong>
-                                                <span className="badge bg-info">{drawingData.length} drawings</span>
+                                                <strong>3D View Status:</strong>
+                                                <span className={`badge bg-${is3DView ? 'success' : 'secondary'}`}>
+                                                    {is3DView ? 'Active' : 'Inactive'}
+                                                </span>
                                             </div>
                                             <div className="small">
-                                                <div>Selected Tool: <span className="badge bg-primary">{selectedTool}</span></div>
-                                                <div>Undo Available: <span className={`badge bg-${historyIndex > 0 ? 'success' : 'secondary'}`}>{historyIndex > 0 ? 'Yes' : 'No'}</span></div>
-                                                <div>Redo Available: <span className={`badge bg-${historyIndex < drawingHistory.length - 1 ? 'success' : 'secondary'}`}>{historyIndex < drawingHistory.length - 1 ? 'Yes' : 'No'}</span></div>
+                                                <div>Buildings Rendered: <span className="badge bg-info">{labelData.length}</span></div>
+                                                <div>View Mode: <span className="badge bg-primary">{is3DView ? '3D Scene' : '2D Map'}</span></div>
+                                                <div>Zoom Level: <span className="badge bg-secondary">{is3DView ? 'Camera Control' : `${zoomLevel}%`}</span></div>
+                                                <div>Drawing Tools: <span className={`badge bg-${is3DView ? 'warning' : 'success'}`}>
+                                                    {is3DView ? 'Disabled in 3D' : 'Enabled'}
+                                                </span></div>
                                             </div>
                                         </div>
                                         <hr />
                                         <div className="mb-3">
-                                            <label className="form-label">{t.groupId}</label>
-                                            <input
-                                                type="text"
-                                                className="form-control form-control-sm"
-                                                placeholder={`${language === 'en' ? 'Enter' : '輸入'} ${t.groupId}`}
-                                            />
+                                            <strong>Building Statistics:</strong>
+                                            <div className="mt-2">
+                                                <div className="d-flex justify-content-between">
+                                                    <span>🏠 Residential:</span>
+                                                    <span className="badge bg-success">
+                                                        {labelData.filter(b => b.buildingType === 'residential').length}
+                                                    </span>
+                                                </div>
+                                                <div className="d-flex justify-content-between mt-1">
+                                                    <span>🏢 Commercial:</span>
+                                                    <span className="badge bg-primary">
+                                                        {labelData.filter(b => b.buildingType === 'commercial').length}
+                                                    </span>
+                                                </div>
+                                                <div className="d-flex justify-content-between mt-1">
+                                                    <span>🏭 Industrial:</span>
+                                                    <span className="badge bg-warning">
+                                                        {labelData.filter(b => b.buildingType === 'industrial').length}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                         <div>
                                             <label className="form-label">{t.buildingType}</label>
@@ -1203,7 +1729,6 @@ const KiwiSmartApp = () => {
                     )}
                 </div>
 
-                {/* Bottom Control Bar - Fixed Position */}
                 <div className="position-absolute bottom-0 start-0 end-0 bg-dark p-3" style={{ zIndex: 1000 }}>
                     <div className="d-flex justify-content-center gap-3">
                         <button
@@ -1224,11 +1749,17 @@ const KiwiSmartApp = () => {
                         >
                             📥 {t.exportLabels}
                         </button>
+                        <button
+                            className={`btn ${is3DView ? 'btn-warning' : 'btn-info'}`}
+                            onClick={() => handleToolClick('3d')}
+                        >
+                            📐 {is3DView ? 'Switch to 2D' : 'Switch to 3D'}
+                        </button>
                     </div>
                 </div>
             </div>
 
-            {/* Auto-labeling Progress Modal */}
+            {/* Loading Modal for Auto Labeling */}
             {isAutoLabeling && (
                 <div
                     className="modal fade show"
@@ -1341,7 +1872,8 @@ const KiwiSmartApp = () => {
                                 <hr />
                                 <small className="text-muted">
                                     {t.version}<br />
-                                    © 2024 KiwiSmart Technologies
+                                    © 2024 KiwiSmart Technologies<br />
+                                    Enhanced 3D Visualization with Three.js
                                 </small>
                             </div>
                             <div className="modal-footer">
@@ -1402,6 +1934,20 @@ const KiwiSmartApp = () => {
                                         </label>
                                     </div>
                                 </div>
+                                <div className="mb-3">
+                                    <div className="form-check form-switch">
+                                        <input 
+                                            className="form-check-input" 
+                                            type="checkbox" 
+                                            id="enable3D" 
+                                            checked={is3DView}
+                                            onChange={() => handleToolClick('3d')}
+                                        />
+                                        <label className="form-check-label" htmlFor="enable3D">
+                                            Enable 3D View by Default
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                             <div className="modal-footer">
                                 <button
@@ -1427,7 +1973,6 @@ const KiwiSmartApp = () => {
                 </div>
             )}
 
-            {/* Hidden File Input */}
             <input
                 ref={fileInputRef}
                 type="file"
@@ -1441,71 +1986,80 @@ const KiwiSmartApp = () => {
     return (
         <div className="App">
             <style>{`
-        @keyframes pulse {
-          0%, 100% {
-            border-color: #dc3545;
-            opacity: 0.8;
-          }
-          50% {
-            border-color: #bd2130;
-            opacity: 1;
-          }
-        }
-        
-        .fab-tool {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .fab-tool:hover {
-          transform: scale(1.05);
-        }
-        
-        .dropdown-menu.show {
-          display: block;
-          animation: fadeIn 0.15s ease-in-out;
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(-10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .card {
-          backdrop-filter: blur(10px);
-        }
-        
-        .progress-bar-animated {
-          animation: progress-bar-stripes 1s linear infinite;
-        }
-        
-        @keyframes progress-bar-stripes {
-          0% { background-position: 1rem 0; }
-          100% { background-position: 0 0; }
-        }
-        
-        .btn {
-          transition: all 0.15s ease-in-out;
-        }
-        
-        .btn:hover:not(:disabled) {
-          transform: translateY(-1px);
-        }
-        
-        .modal {
-          backdrop-filter: blur(3px);
-        }
-        
-        /* Fix for zoom controls at different zoom levels */
-        .position-absolute {
-          pointer-events: auto;
-        }
-        
-        /* Ensure UI elements stay visible at all zoom levels */
-        .fixed-ui {
-          position: fixed !important;
-          z-index: 1001;
-        }
-      `}</style>
+                @keyframes pulse {
+                    0%, 100% {
+                        border-color: #dc3545;
+                        opacity: 0.8;
+                    }
+                    50% {
+                        border-color: #bd2130;
+                        opacity: 1;
+                    }
+                }
+                
+                .fab-tool {
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .fab-tool:hover {
+                    transform: scale(1.05);
+                }
+                
+                .dropdown-menu.show {
+                    display: block;
+                    animation: fadeIn 0.15s ease-in-out;
+                }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                
+                .card {
+                    backdrop-filter: blur(10px);
+                }
+                
+                .progress-bar-animated {
+                    animation: progress-bar-stripes 1s linear infinite;
+                }
+                
+                @keyframes progress-bar-stripes {
+                    0% { background-position: 1rem 0; }
+                    100% { background-position: 0 0; }
+                }
+                
+                .btn {
+                    transition: all 0.15s ease-in-out;
+                }
+                
+                .btn:hover:not(:disabled) {
+                    transform: translateY(-1px);
+                }
+                
+                .modal {
+                    backdrop-filter: blur(3px);
+                }
+                
+                .position-absolute {
+                    pointer-events: auto;
+                }
+                
+                .fixed-ui {
+                    position: fixed !important;
+                    z-index: 1001;
+                }
+
+                canvas {
+                    outline: none;
+                }
+
+                .canvas-container {
+                    width: 100%;
+                    height: 100%;
+                    position: relative;
+                    overflow: hidden;
+                }
+            `}</style>
 
             {!isProjectOpen ? <MainPage /> : <ProjectInterface />}
         </div>
