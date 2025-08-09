@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 const KiwiSmartApp = () => {
     const [isProjectOpen, setIsProjectOpen] = useState(false);
@@ -49,6 +50,10 @@ const KiwiSmartApp = () => {
     const controlsRef = useRef(null);
     const animationRef = useRef(null);
     const buildingMeshesRef = useRef([]);
+    const [cameraDistance, setCameraDistance] = useState(1000);
+    const [isMousePressed, setIsMousePressed] = useState(false);
+    const [mouseButton, setMouseButton] = useState(-1);
+    const lastMouseRef = useRef(new THREE.Vector2());
 
     // Translations
     const translations = {
@@ -143,7 +148,10 @@ const KiwiSmartApp = () => {
             manualDrawingAdded: 'Manual drawing added',
             allDrawingsDeleted: 'All drawings deleted',
             buildingOutlinesToggled: 'Building outlines toggled',
-            toggle3D: 'Toggle 3D View'
+            toggle3D: 'Toggle 3D View',
+            resetCamera: 'Reset Camera',
+            wireframe: 'Wireframe Mode',
+            resetView: 'Reset View'
         },
         zh: {
             appTitle: 'KiwiSmart',
@@ -236,7 +244,10 @@ const KiwiSmartApp = () => {
             manualDrawingAdded: '手動繪圖已添加',
             allDrawingsDeleted: '所有繪圖已刪除',
             buildingOutlinesToggled: '建築物輪廓已切換',
-            toggle3D: '切換 3D 視圖'
+            toggle3D: '切換 3D 視圖',
+            resetCamera: '重設相機',
+            wireframe: '線框模式',
+            resetView: '重設視圖'
         }
     };
 
@@ -249,10 +260,11 @@ const KiwiSmartApp = () => {
         { id: 'delete', icon: '🗑️', label: t.deleteLabel },
         { id: 'undo', icon: '↶', label: t.undo },
         { id: 'redo', icon: '↷', label: t.redo },
-        { id: '3d', icon: '📐', label: t.toggle3D }
+        { id: '3d', icon: '📐', label: t.toggle3D },
+        { id: 'reset', icon: '🔄', label: t.resetView }
     ];
 
-    // Enhanced Three.js Setup with proper OrbitControls
+    // Enhanced Three.js Setup with improved controls
     useEffect(() => {
         if (is3DView && canvasRef.current && labelData.length > 0) {
             // Clean up previous scene
@@ -265,7 +277,7 @@ const KiwiSmartApp = () => {
 
             // Initialize Scene
             sceneRef.current = new THREE.Scene();
-            sceneRef.current.background = new THREE.Color(0x87CEEB); // Sky blue background
+            sceneRef.current.background = new THREE.Color(0x87CEEB);
 
             // Calculate center point of all buildings
             const validBuildings = labelData.filter(b => b.bounds && typeof b.bounds.x === 'number' && typeof b.bounds.y === 'number');
@@ -275,27 +287,21 @@ const KiwiSmartApp = () => {
                 return;
             }
             
-            console.log(`Rendering ${validBuildings.length} buildings in 3D`);
-            
             const centerX = validBuildings.reduce((sum, b) => sum + (b.bounds.x + (b.bounds.width || 0) / 2), 0) / validBuildings.length;
             const centerY = validBuildings.reduce((sum, b) => sum + (b.bounds.y + (b.bounds.height || 0) / 2), 0) / validBuildings.length;
-            
-            console.log('Scene center:', { centerX, centerY });
 
-            // Initialize Camera with better positioning
+            // Initialize Camera
             const aspect = canvasRef.current.clientWidth / canvasRef.current.clientHeight;
             cameraRef.current = new THREE.PerspectiveCamera(75, aspect, 0.1, 50000);
             
-            // Calculate optimal camera distance based on data spread
             const maxDistance = Math.max(
                 ...validBuildings.map(b => Math.sqrt(Math.pow(b.bounds.x - centerX, 2) + Math.pow(b.bounds.y - centerY, 2)))
             );
-            const cameraDistance = Math.max(maxDistance * 3, 1000);
+            const initialDistance = Math.max(maxDistance * 3, 1000);
+            setCameraDistance(initialDistance);
             
-            cameraRef.current.position.set(centerX + cameraDistance * 0.7, cameraDistance * 0.8, centerY + cameraDistance * 0.7);
+            cameraRef.current.position.set(centerX + initialDistance * 0.7, initialDistance * 0.8, centerY + initialDistance * 0.7);
             cameraRef.current.lookAt(centerX, 0, centerY);
-            
-            console.log('Camera positioned at:', cameraRef.current.position);
 
             // Initialize Renderer
             rendererRef.current = new THREE.WebGLRenderer({ 
@@ -308,145 +314,22 @@ const KiwiSmartApp = () => {
             rendererRef.current.shadowMap.enabled = true;
             rendererRef.current.shadowMap.type = THREE.PCFSoftShadowMap;
 
-            // Manual OrbitControls Implementation (since CDN version may not work)
-            const controls = {
-                object: cameraRef.current,
-                domElement: canvasRef.current,
-                target: new THREE.Vector3(centerX, 0, centerY),
-                minDistance: 50,
-                maxDistance: cameraDistance * 3,
-                enableDamping: true,
-                dampingFactor: 0.05,
-                enableZoom: true,
-                enableRotate: true,
-                enablePan: true,
-                rotateSpeed: 1.0,
-                zoomSpeed: 1.0,
-                panSpeed: 1.0,
-                
-                spherical: new THREE.Spherical(),
-                sphericalDelta: new THREE.Spherical(),
-                scale: 1,
-                panOffset: new THREE.Vector3(),
-                zoomChanged: false,
+            // Use standard OrbitControls
+            controlsRef.current = new OrbitControls(cameraRef.current, canvasRef.current);
+            controlsRef.current.target.set(centerX, 0, centerY);
+            controlsRef.current.enableDamping = true;
+            controlsRef.current.dampingFactor = 0.05;
+            controlsRef.current.minDistance = 50;
+            controlsRef.current.maxDistance = initialDistance * 3;
+            controlsRef.current.enablePan = true;
+            controlsRef.current.rotateSpeed = 1.0;
+            controlsRef.current.zoomSpeed = 1.0;
+            controlsRef.current.panSpeed = 1.0;
+            controlsRef.current.minPolarAngle = 0.1;
+            controlsRef.current.maxPolarAngle = Math.PI - 0.1;
+            controlsRef.current.update();
 
-                mouseButtons: {
-                    LEFT: THREE.MOUSE.ROTATE,
-                    MIDDLE: THREE.MOUSE.DOLLY,
-                    RIGHT: THREE.MOUSE.PAN
-                },
-
-                // Manual zoom methods for menu integration
-                zoomIn: function() {
-                    this.spherical.radius *= 0.8;
-                    this.spherical.radius = Math.max(this.minDistance, this.spherical.radius);
-                },
-
-                zoomOut: function() {
-                    this.spherical.radius *= 1.25;
-                    this.spherical.radius = Math.min(this.maxDistance, this.spherical.radius);
-                },
-
-                reset: function() {
-                    this.spherical.setFromVector3(this.object.position.clone().sub(this.target));
-                    this.sphericalDelta.set(0, 0, 0);
-                    this.panOffset.set(0, 0, 0);
-                },
-
-                update: function() {
-                    const offset = new THREE.Vector3();
-                    const quat = new THREE.Quaternion().setFromUnitVectors(this.object.up, new THREE.Vector3(0, 1, 0));
-                    const quatInverse = quat.clone().invert();
-
-                    offset.copy(this.object.position).sub(this.target);
-                    offset.applyQuaternion(quat);
-
-                    this.spherical.setFromVector3(offset);
-
-                    if (this.enableDamping) {
-                        this.spherical.theta += this.sphericalDelta.theta * this.dampingFactor;
-                        this.spherical.phi += this.sphericalDelta.phi * this.dampingFactor;
-                    } else {
-                        this.spherical.theta += this.sphericalDelta.theta;
-                        this.spherical.phi += this.sphericalDelta.phi;
-                    }
-
-                    this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));
-                    this.spherical.radius = Math.max(this.minDistance, Math.min(this.maxDistance, this.spherical.radius));
-
-                    this.target.add(this.panOffset);
-
-                    offset.setFromSpherical(this.spherical);
-                    offset.applyQuaternion(quatInverse);
-
-                    this.object.position.copy(this.target).add(offset);
-                    this.object.lookAt(this.target);
-
-                    if (this.enableDamping) {
-                        this.sphericalDelta.theta *= (1 - this.dampingFactor);
-                        this.sphericalDelta.phi *= (1 - this.dampingFactor);
-                    } else {
-                        this.sphericalDelta.set(0, 0, 0);
-                    }
-
-                    this.panOffset.set(0, 0, 0);
-                    this.scale = 1;
-                }
-            };
-
-            // Initialize spherical coordinates from current camera position
-            const initialOffset = cameraRef.current.position.clone().sub(controls.target);
-            controls.spherical.setFromVector3(initialOffset);
-
-            controlsRef.current = controls;
-
-            // Mouse interaction for controls
-            let isMouseDown = false;
-            let mouseButton = -1;
-            const lastMouse = new THREE.Vector2();
-
-            const onMouseDown = (event) => {
-                isMouseDown = true;
-                mouseButton = event.button;
-                lastMouse.set(event.clientX, event.clientY);
-            };
-
-            const onMouseMove = (event) => {
-                if (!isMouseDown) return;
-
-                const deltaX = event.clientX - lastMouse.x;
-                const deltaY = event.clientY - lastMouse.y;
-
-                if (mouseButton === 0) { // Left button - rotate
-                    controls.sphericalDelta.theta -= deltaX * 0.01;
-                    controls.sphericalDelta.phi -= deltaY * 0.01;
-                }
-
-                lastMouse.set(event.clientX, event.clientY);
-            };
-
-            const onMouseUp = () => {
-                isMouseDown = false;
-                mouseButton = -1;
-            };
-
-            const onWheel = (event) => {
-                event.preventDefault();
-                if (controlsRef.current) {
-                    if (event.deltaY < 0) {
-                        controlsRef.current.zoomIn();
-                    } else {
-                        controlsRef.current.zoomOut();
-                    }
-                }
-            };
-
-            canvasRef.current.addEventListener('mousedown', onMouseDown);
-            canvasRef.current.addEventListener('mousemove', onMouseMove);
-            canvasRef.current.addEventListener('mouseup', onMouseUp);
-            canvasRef.current.addEventListener('wheel', onWheel);
-
-            // Enhanced Ground Plane with dynamic sizing
+            // Enhanced Ground and Grid
             const groundSize = Math.max(maxDistance * 4, 2000);
             const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 50, 50);
             const groundMaterial = new THREE.MeshLambertMaterial({ 
@@ -460,7 +343,6 @@ const KiwiSmartApp = () => {
             ground.receiveShadow = true;
             sceneRef.current.add(ground);
 
-            // Grid helper with dynamic size
             const gridHelper = new THREE.GridHelper(groundSize, Math.min(100, groundSize / 50), 0x888888, 0xcccccc);
             gridHelper.position.set(centerX, 0, centerY);
             sceneRef.current.add(gridHelper);
@@ -470,59 +352,27 @@ const KiwiSmartApp = () => {
 
             // Create enhanced 3D buildings
             validBuildings.forEach((building, index) => {
-                console.log(`Creating building ${index + 1}:`, building);
-                
-                // Calculate building dimensions with minimum sizes
                 const width = Math.max(building.bounds.width || 20, 10);
                 const depth = Math.max(building.bounds.height || 20, 10);
                 const height = Math.max(building.bounds.height3D || 30, 5);
 
-                console.log(`Building dimensions: ${width} x ${depth} x ${height}`);
-
-                // Create building geometry
                 const geometry = new THREE.BoxGeometry(width, height, depth);
                 
-                // Choose material based on building type with better colors
                 let material;
                 const buildingTypeNormalized = (building.buildingType || 'residential').toLowerCase();
                 
-                if (buildingTypeNormalized.includes('residential') || buildingTypeNormalized.includes('house')) {
-                    material = new THREE.MeshLambertMaterial({ 
-                        color: 0x4CAF50, // Green
-                        transparent: false,
-                        opacity: 1.0
-                    });
-                } else if (buildingTypeNormalized.includes('commercial') || buildingTypeNormalized.includes('office') || buildingTypeNormalized.includes('retail')) {
-                    material = new THREE.MeshLambertMaterial({ 
-                        color: 0x2196F3, // Blue
-                        transparent: false,
-                        opacity: 1.0
-                    });
-                } else if (buildingTypeNormalized.includes('industrial') || buildingTypeNormalized.includes('warehouse')) {
-                    material = new THREE.MeshLambertMaterial({ 
-                        color: 0xFF9800, // Orange
-                        transparent: false,
-                        opacity: 1.0
-                    });
+                if (buildingTypeNormalized.includes('residential')) {
+                    material = new THREE.MeshLambertMaterial({ color: 0x4CAF50 });
+                } else if (buildingTypeNormalized.includes('commercial')) {
+                    material = new THREE.MeshLambertMaterial({ color: 0x2196F3 });
+                } else if (buildingTypeNormalized.includes('industrial')) {
+                    material = new THREE.MeshLambertMaterial({ color: 0xFF9800 });
                 } else {
-                    material = new THREE.MeshLambertMaterial({ 
-                        color: 0x9E9E9E, // Gray for unknown types
-                        transparent: false,
-                        opacity: 1.0
-                    });
+                    material = new THREE.MeshLambertMaterial({ color: 0x9E9E9E });
                 }
 
-                // Create building mesh
                 const buildingMesh = new THREE.Mesh(geometry, material);
-                
-                // Position building
-                const posX = building.bounds.x;
-                const posY = height / 2;
-                const posZ = building.bounds.y;
-                
-                buildingMesh.position.set(posX, posY, posZ);
-                console.log(`Building ${index + 1} positioned at:`, buildingMesh.position);
-
+                buildingMesh.position.set(building.bounds.x, height / 2, building.bounds.y);
                 buildingMesh.castShadow = true;
                 buildingMesh.receiveShadow = true;
                 buildingMesh.userData = { building, index };
@@ -537,43 +387,34 @@ const KiwiSmartApp = () => {
                 wireframe.position.copy(buildingMesh.position);
                 sceneRef.current.add(wireframe);
             });
-            
-            console.log(`Created ${buildingMeshesRef.current.length} building meshes`);
 
-            // Enhanced Lighting System
+            // Enhanced Lighting
             const ambientLight = new THREE.AmbientLight(0x404040, 1.0);
             sceneRef.current.add(ambientLight);
 
             const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-            directionalLight.position.set(centerX + cameraDistance, cameraDistance, centerY + cameraDistance);
+            directionalLight.position.set(centerX + initialDistance, initialDistance, centerY + initialDistance);
             directionalLight.castShadow = true;
             directionalLight.shadow.mapSize.width = 2048;
             directionalLight.shadow.mapSize.height = 2048;
             directionalLight.shadow.camera.near = 0.1;
-            directionalLight.shadow.camera.far = cameraDistance * 3;
-            directionalLight.shadow.camera.left = -cameraDistance;
-            directionalLight.shadow.camera.right = cameraDistance;
-            directionalLight.shadow.camera.top = cameraDistance;
-            directionalLight.shadow.camera.bottom = -cameraDistance;
+            directionalLight.shadow.camera.far = initialDistance * 3;
+            directionalLight.shadow.camera.left = -initialDistance;
+            directionalLight.shadow.camera.right = initialDistance;
+            directionalLight.shadow.camera.top = initialDistance;
+            directionalLight.shadow.camera.bottom = -initialDistance;
             sceneRef.current.add(directionalLight);
 
-            // Add hemisphere light for more natural lighting
             const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x8B4513, 0.6);
             sceneRef.current.add(hemisphereLight);
-            
-            console.log('3D scene setup complete');
 
             // Animation Loop
             const animate = () => {
                 animationRef.current = requestAnimationFrame(animate);
                 
-                if (controlsRef.current) {
-                    controlsRef.current.update();
-                }
+                controlsRef.current.update();
                 
-                if (rendererRef.current && sceneRef.current && cameraRef.current) {
-                    rendererRef.current.render(sceneRef.current, cameraRef.current);
-                }
+                rendererRef.current.render(sceneRef.current, cameraRef.current);
             };
             animate();
 
@@ -591,10 +432,6 @@ const KiwiSmartApp = () => {
 
             return () => {
                 window.removeEventListener('resize', handleResize);
-                canvasRef.current?.removeEventListener('mousedown', onMouseDown);
-                canvasRef.current?.removeEventListener('mousemove', onMouseMove);
-                canvasRef.current?.removeEventListener('mouseup', onMouseUp);
-                canvasRef.current?.removeEventListener('wheel', onWheel);
                 
                 if (animationRef.current) {
                     cancelAnimationFrame(animationRef.current);
@@ -610,23 +447,16 @@ const KiwiSmartApp = () => {
     // Enhanced coordinate translation functions
     const translateCoordinates = (coords) => {
         if (!coords || !coords.length) return { x: 0, y: 0 };
-        
-        // Get first coordinate pair
         const firstCoord = coords[0];
         const lng = firstCoord[0];
         const lat = firstCoord[1];
-        
-        // Convert to local coordinate system
-        // Scale factor to make coordinates reasonable for 3D scene
         const scaleFactor = 1000;
-        
         return {
             x: lng * scaleFactor,
             y: lat * scaleFactor
         };
     };
 
-    // Calculate bounds from coordinate array
     const calculateBounds = (coords) => {
         if (!coords || !coords.length) return { width: 50, height: 50 };
         
@@ -661,15 +491,11 @@ const KiwiSmartApp = () => {
                     try {
                         const geojson = JSON.parse(e.target.result);
                         console.log('GeoJSON loaded:', geojson);
-                        console.log('Features count:', geojson.features?.length);
                         
                         const newLabelData = geojson.features.map((feature, index) => {
-                            console.log(`Processing feature ${index}:`, feature);
-                            
                             let coords = [];
                             let bounds = { x: 0, y: 0, width: 50, height: 50 };
                             
-                            // Handle different geometry types
                             if (feature.geometry) {
                                 switch (feature.geometry.type) {
                                     case 'Polygon':
@@ -682,11 +508,9 @@ const KiwiSmartApp = () => {
                                         coords = [feature.geometry.coordinates];
                                         break;
                                     default:
-                                        console.warn('Unsupported geometry type:', feature.geometry.type);
                                         coords = [[0, 0]];
                                 }
                                 
-                                // Calculate center and bounds
                                 if (coords && coords.length > 0) {
                                     const coordBounds = calculateBounds(coords);
                                     const centerCoord = translateCoordinates(coords);
@@ -701,8 +525,6 @@ const KiwiSmartApp = () => {
                             }
                             
                             const properties = feature.properties || {};
-                            
-                            // Try different height attributes
                             const heightAttr = properties.height || 
                                              properties.HEIGHT || 
                                              properties.EW_HA2013 || 
@@ -710,14 +532,13 @@ const KiwiSmartApp = () => {
                                              properties.floors * 3 || 
                                              Math.random() * 100 + 30;
                             
-                            // Try different building type attributes
                             const buildingType = properties.type || 
                                                properties.building || 
                                                properties.landuse || 
                                                properties.amenity || 
                                                ['residential', 'commercial', 'industrial'][Math.floor(Math.random() * 3)];
                             
-                            const building = {
+                            return {
                                 id: index + 1,
                                 groupId: `GROUP_${String(index + 1).padStart(3, '0')}`,
                                 subGroupId: `SUB_${String(Math.floor(index / 10) + 1).padStart(3, '0')}`,
@@ -727,12 +548,8 @@ const KiwiSmartApp = () => {
                                     height3D: Math.max(heightAttr, 10)
                                 }
                             };
-                            
-                            console.log(`Building ${index + 1}:`, building);
-                            return building;
                         });
                         
-                        console.log('Final labelData:', newLabelData);
                         setLabelData(newLabelData);
                         addActivityLog('geojsonProcessed', 'success');
                     } catch (error) {
@@ -783,6 +600,14 @@ const KiwiSmartApp = () => {
         } else if (toolId === '3d') {
             setIs3DView(!is3DView);
             addActivityLog('viewToggled3D', 'info');
+        } else if (toolId === 'reset') {
+            if (is3DView && controlsRef.current) {
+                controlsRef.current.reset();
+                addActivityLog('cameraReset', 'info');
+            } else {
+                setZoomLevel(100);
+                addActivityLog('viewReset', 'info');
+            }
         } else {
             setSelectedTool(toolId);
             addActivityLog(`toolSelected_${toolId}`, 'info');
@@ -870,7 +695,6 @@ const KiwiSmartApp = () => {
             activityLogs: activityLogs.slice(0, 10)
         };
 
-        // Note: localStorage is not supported in Claude artifacts
         addActivityLog('projectSaved', 'success');
         alert(language === 'en' ? 'Project saved successfully!' : '專案儲存成功！');
     };
@@ -901,6 +725,7 @@ const KiwiSmartApp = () => {
         switch (action) {
             case 'home':
                 setIsProjectOpen(false);
+                setIs3DView(false);
                 addActivityLog('returnedHome', 'info');
                 break;
             case 'newProject':
@@ -919,7 +744,7 @@ const KiwiSmartApp = () => {
                 break;
             case 'zoomIn':
                 if (is3DView && controlsRef.current) {
-                    controlsRef.current.zoomIn();
+                    controlsRef.current.dollyIn(controlsRef.current.getDollyScale());
                     addActivityLog('zoomedIn_3D', 'info');
                 } else {
                     setZoomLevel(prev => {
@@ -931,7 +756,7 @@ const KiwiSmartApp = () => {
                 break;
             case 'zoomOut':
                 if (is3DView && controlsRef.current) {
-                    controlsRef.current.zoomOut();
+                    controlsRef.current.dollyOut(controlsRef.current.getDollyScale());
                     addActivityLog('zoomedOut_3D', 'info');
                 } else {
                     setZoomLevel(prev => {
@@ -1026,9 +851,9 @@ const KiwiSmartApp = () => {
             statistics: {
                 totalBuildings: labelData.length,
                 buildingTypes: {
-                    residential: labelData.filter(item => item.buildingType === 'residential').length,
-                    commercial: labelData.filter(item => item.buildingType === 'commercial').length,
-                    industrial: labelData.filter(item => item.buildingType === 'industrial').length
+                    residential: labelData.filter(b => b.buildingType === 'residential').length,
+                    commercial: labelData.filter(b => b.buildingType === 'commercial').length,
+                    industrial: labelData.filter(b => b.buildingType === 'industrial').length
                 }
             },
             activitySummary: activityLogs.slice(0, 20)
@@ -1219,7 +1044,7 @@ const KiwiSmartApp = () => {
                                         💾 {t.saveAs}
                                     </button>
                                     <div className="dropdown-divider"></div>
-                                    <button className="dropdown-item" onClick={() => setIsProjectOpen(false)}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('closeProject')}>
                                         ❌ {t.closeProject}
                                     </button>
                                 </div>
@@ -1236,24 +1061,24 @@ const KiwiSmartApp = () => {
                             </button>
                             {activeDropdown === 'edit' && (
                                 <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('undo')}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('undo')} disabled={historyIndex <= 0 || is3DView}>
                                         ↶ {t.undo}
                                     </button>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('redo')}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('redo')} disabled={historyIndex >= drawingHistory.length - 1 || is3DView}>
                                         ↷ {t.redo}
                                     </button>
                                     <div className="dropdown-divider"></div>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('cut')}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('cut')} disabled={is3DView}>
                                         ✂️ {t.cut}
                                     </button>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('copy')}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('copy')} disabled={is3DView}>
                                         📋 {t.copy}
                                     </button>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('paste')}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('paste')} disabled={is3DView}>
                                         📌 {t.paste}
                                     </button>
                                     <div className="dropdown-divider"></div>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('delete')}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('delete')} disabled={drawingData.length === 0 || is3DView}>
                                         🗑️ {t.delete}
                                     </button>
                                 </div>
@@ -1271,10 +1096,10 @@ const KiwiSmartApp = () => {
                             {activeDropdown === 'view' && (
                                 <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
                                     <button className="dropdown-item" onClick={() => handleMenuClick('zoomIn')}>
-                                        🔍 {t.zoomIn} {is3DView ? '' : `(${zoomLevel}%)`}
+                                        🔍 {t.zoomIn}
                                     </button>
                                     <button className="dropdown-item" onClick={() => handleMenuClick('zoomOut')}>
-                                        🔍 {t.zoomOut} {is3DView ? '' : `(${zoomLevel}%)`}
+                                        🔍 {t.zoomOut}
                                     </button>
                                     <button className="dropdown-item" onClick={() => handleMenuClick('fullScreen')}>
                                         ⛶ {t.fullScreen}
@@ -1282,6 +1107,11 @@ const KiwiSmartApp = () => {
                                     <button className="dropdown-item" onClick={() => handleToolClick('3d')}>
                                         📐 {t.toggle3D}
                                     </button>
+                                    {is3DView && (
+                                        <button className="dropdown-item" onClick={() => handleToolClick('reset')}>
+                                            🔄 {t.resetCamera}
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -1362,27 +1192,12 @@ const KiwiSmartApp = () => {
                             <canvas
                                 ref={canvasRef}
                                 className="w-100 h-100"
-                                style={{ display: 'block', cursor: 'grab' }}
+                                style={{ display: 'block' }}
                             />
-                            {/* 3D View Info Panel */}
-                            <div className="position-absolute top-0 end-0 m-3" style={{
-                                zIndex: 1002,
-                                background: 'rgba(0,0,0,0.8)',
-                                color: 'white',
-                                padding: '10px',
-                                borderRadius: '5px'
-                            }}>
-                                <small>
-                                    📐 3D View Active<br />
-                                    Buildings: {labelData.length}<br />
-                                    Mouse: Drag to rotate<br />
-                                    Wheel: Zoom in/out
-                                </small>
-                            </div>
                         </div>
                     ) : (
                         <div
-                            className="h-100 position-relative d-flex align-items-center justify-content-center"
+                            className="h-100 position-relative d-flex align-items-center justify-content-center view-transition"
                             style={{
                                 backgroundImage: mapBackground
                                     ? `url(${mapBackground})`
@@ -1482,7 +1297,7 @@ const KiwiSmartApp = () => {
                         </div>
                     )}
 
-                    <div className="position-absolute top-0 start-0 m-3" style={{ zIndex: 1001 }}>
+                    <div className="position-absolute top-0 start-0 m-3 fixed-ui" style={{ zIndex: 1001 }}>
                         <div className="btn-group-vertical" role="group">
                             <button
                                 className="btn btn-light btn-sm border"
@@ -1505,6 +1320,15 @@ const KiwiSmartApp = () => {
                             >
                                 {is3DView ? '3D' : `${zoomLevel}%`}
                             </button>
+                            {is3DView && (
+                                <button
+                                    className="btn btn-warning btn-sm border mt-2"
+                                    onClick={() => handleToolClick('reset')}
+                                    title={t.resetCamera}
+                                >
+                                    🔄
+                                </button>
+                            )}
                             {mapBackground && !is3DView && (
                                 <>
                                     <button
@@ -1529,7 +1353,7 @@ const KiwiSmartApp = () => {
                                 </>
                             )}
                             <button
-                                className="btn btn-primary btn-sm border mt-2"
+                                className={`btn ${is3DView ? 'btn-success' : 'btn-info'} btn-sm border mt-2`}
                                 onClick={() => handleToolClick('3d')}
                                 title={t.toggle3D}
                             >
@@ -1538,7 +1362,7 @@ const KiwiSmartApp = () => {
                         </div>
                     </div>
 
-                    <div className="position-absolute bottom-0 start-0 m-3 mb-5" style={{ zIndex: 1001 }}>
+                    <div className="position-absolute bottom-0 start-0 m-3 mb-5 fixed-ui" style={{ zIndex: 1001 }}>
                         <div className="btn-group-vertical" role="group">
                             <button
                                 className={`btn btn-sm border mb-1 d-flex flex-column align-items-center py-2 ${sidebarPanel === 'activity' ? 'btn-primary' : 'btn-light'}`}
@@ -1675,18 +1499,25 @@ const KiwiSmartApp = () => {
                                     <div>
                                         <div className="mb-3">
                                             <div className="d-flex justify-content-between align-items-center mb-2">
-                                                <strong>3D View Status:</strong>
+                                                <strong>View Mode:</strong>
                                                 <span className={`badge bg-${is3DView ? 'success' : 'secondary'}`}>
-                                                    {is3DView ? 'Active' : 'Inactive'}
+                                                    {is3DView ? '3D Active' : '2D Active'}
                                                 </span>
                                             </div>
                                             <div className="small">
-                                                <div>Buildings Rendered: <span className="badge bg-info">{labelData.length}</span></div>
-                                                <div>View Mode: <span className="badge bg-primary">{is3DView ? '3D Scene' : '2D Map'}</span></div>
-                                                <div>Zoom Level: <span className="badge bg-secondary">{is3DView ? 'Camera Control' : `${zoomLevel}%`}</span></div>
-                                                <div>Drawing Tools: <span className={`badge bg-${is3DView ? 'warning' : 'success'}`}>
+                                                <div>Buildings: <span className="badge bg-info">{labelData.length}</span></div>
+                                                <div>View: <span className="badge bg-primary">{is3DView ? '3D Scene' : '2D Map'}</span></div>
+                                                <div>Zoom: <span className="badge bg-secondary">
+                                                    {is3DView ? `${Math.round(cameraDistance)}m` : `${zoomLevel}%`}
+                                                </span></div>
+                                                <div>Drawing: <span className={`badge bg-${is3DView ? 'warning' : 'success'}`}>
                                                     {is3DView ? 'Disabled in 3D' : 'Enabled'}
                                                 </span></div>
+                                                {is3DView && (
+                                                    <div>Camera: <span className="badge bg-info">
+                                                        Interactive
+                                                    </span></div>
+                                                )}
                                             </div>
                                         </div>
                                         <hr />
@@ -1713,7 +1544,7 @@ const KiwiSmartApp = () => {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div>
+                                        <div className="mb-3">
                                             <label className="form-label">{t.buildingType}</label>
                                             <select className="form-select form-select-sm">
                                                 <option>{t.all}</option>
@@ -1722,264 +1553,293 @@ const KiwiSmartApp = () => {
                                                 <option>{t.industrial}</option>
                                             </select>
                                         </div>
+                                        {is3DView && (
+                                            <div className="mt-3">
+                                                <button 
+                                                    className="btn btn-warning btn-sm w-100 mb-2"
+                                                    onClick={() => handleToolClick('reset')}
+                                                >
+                                                    🔄 {t.resetCamera}
+                                                </button>
+                                                <button 
+                                                    className="btn btn-info btn-sm w-100"
+                                                    onClick={() => setShowBuildingOutlines(!showBuildingOutlines)}
+                                                >
+                                                    📋 {showBuildingOutlines ? 'Hide' : 'Show'} Building Info
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
                         </div>
                     )}
-                </div>
 
-                <div className="position-absolute bottom-0 start-0 end-0 bg-dark p-3" style={{ zIndex: 1000 }}>
-                    <div className="d-flex justify-content-center gap-3">
-                        <button
-                            className="btn btn-secondary"
-                            onClick={() => setIsProjectOpen(false)}
-                        >
-                            🏠 {t.backToHome}
-                        </button>
-                        <button
-                            className="btn btn-primary"
-                            onClick={() => handleMenuClick('save')}
-                        >
-                            💾 {t.saveProgress}
-                        </button>
-                        <button
-                            className="btn btn-success"
-                            onClick={handleExport}
-                        >
-                            📥 {t.exportLabels}
-                        </button>
-                        <button
-                            className={`btn ${is3DView ? 'btn-warning' : 'btn-info'}`}
-                            onClick={() => handleToolClick('3d')}
-                        >
-                            📐 {is3DView ? 'Switch to 2D' : 'Switch to 3D'}
-                        </button>
+                    <div className="position-absolute bottom-0 start-0 end-0 bg-dark p-3" style={{ zIndex: 1000 }}>
+                        <div className="d-flex justify-content-center gap-3 align-items-center">
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setIsProjectOpen(false)}
+                            >
+                                🏠 {t.backToHome}
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => handleMenuClick('save')}
+                            >
+                                💾 {t.saveProgress}
+                            </button>
+                            <button
+                                className="btn btn-success"
+                                onClick={handleExport}
+                            >
+                                📥 {t.exportLabels}
+                            </button>
+                            <button
+                                className={`btn ${is3DView ? 'btn-warning' : 'btn-info'}`}
+                                onClick={() => handleToolClick('3d')}
+                            >
+                                📐 {is3DView ? 'Switch to 2D' : 'Switch to 3D'}
+                            </button>
+                            {is3DView && (
+                                <button
+                                    className="btn btn-outline-light"
+                                    onClick={() => handleToolClick('reset')}
+                                >
+                                    🔄 {t.resetView}
+                                </button>
+                            )}
+                            <div className="vr"></div>
+                            <small className="text-light">
+                                Mode: <span className={`badge bg-${is3DView ? 'success' : 'primary'}`}>
+                                    {is3DView ? '3D' : '2D'}
+                                </span>
+                                {is3DView && (
+                                    <>
+                                        | Distance: <span className="badge bg-info">{Math.round(cameraDistance)}m</span>
+                                    </>
+                                )}
+                                {!is3DView && (
+                                    <>
+                                        | Zoom: <span className="badge bg-secondary">{zoomLevel}%</span>
+                                    </>
+                                )}
+                            </small>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Loading Modal for Auto Labeling */}
-            {isAutoLabeling && (
-                <div
-                    className="modal fade show"
-                    style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
-                >
-                    <div className="modal-dialog modal-dialog-centered">
-                        <div className="modal-content">
-                            <div className="modal-header">
-                                <h5 className="modal-title">{t.autoLabelingInProgress}</h5>
-                            </div>
-                            <div className="modal-body">
-                                <div className="mb-3">
-                                    <div className="d-flex justify-content-between small text-muted mb-2">
-                                        <span>{Math.floor(labelingProgress)} / 100 {t.buildingsLabeled}</span>
-                                        <span>{Math.floor(labelingProgress)}%</span>
-                                    </div>
-                                    <div className="progress">
-                                        <div
-                                            className="progress-bar bg-primary progress-bar-striped progress-bar-animated"
-                                            role="progressbar"
-                                            style={{ width: `${labelingProgress}%` }}
-                                        ></div>
+                {isAutoLabeling && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.autoLabelingInProgress}</h5>
+                                </div>
+                                <div className="modal-body">
+                                    <div className="mb-3">
+                                        <div className="d-flex justify-content-between small text-muted mb-2">
+                                            <span>{Math.floor(labelingProgress)} / 100 {t.buildingsLabeled}</span>
+                                            <span>{Math.floor(labelingProgress)}%</span>
+                                        </div>
+                                        <div className="progress">
+                                            <div
+                                                className="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                                                role="progressbar"
+                                                style={{ width: `${labelingProgress}%` }}
+                                            ></div>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button
-                                    type="button"
-                                    className="btn btn-danger"
-                                    onClick={() => setIsAutoLabeling(false)}
-                                >
-                                    {t.abort}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Save As Modal */}
-            {showSaveModal && (
-                <div
-                    className="modal fade show"
-                    style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
-                >
-                    <div className="modal-dialog modal-dialog-centered">
-                        <div className="modal-content">
-                            <div className="modal-header">
-                                <h5 className="modal-title">{t.saveAsTitle}</h5>
-                                <button
-                                    type="button"
-                                    className="btn-close"
-                                    onClick={() => setShowSaveModal(false)}
-                                ></button>
-                            </div>
-                            <div className="modal-body">
-                                <div className="mb-3">
-                                    <label className="form-label">{t.fileName}</label>
-                                    <input
-                                        type="text"
-                                        className="form-control"
-                                        value={saveAsName}
-                                        onChange={(e) => setSaveAsName(e.target.value)}
-                                        placeholder={t.enterFileName}
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={() => setShowSaveModal(false)}
-                                >
-                                    {t.cancel}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    onClick={handleSaveAsProject}
-                                >
-                                    {t.save}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* About Modal */}
-            {showAboutModal && (
-                <div
-                    className="modal fade show"
-                    style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
-                >
-                    <div className="modal-dialog modal-dialog-centered">
-                        <div className="modal-content">
-                            <div className="modal-header">
-                                <h5 className="modal-title">{t.aboutTitle}</h5>
-                                <button
-                                    type="button"
-                                    className="btn-close"
-                                    onClick={() => setShowAboutModal(false)}
-                                ></button>
-                            </div>
-                            <div className="modal-body text-center">
-                                <div style={{ fontSize: '3rem' }} className="mb-3">🗺️</div>
-                                <h4>{t.appTitle}</h4>
-                                <p className="text-muted">{t.aboutContent}</p>
-                                <hr />
-                                <small className="text-muted">
-                                    {t.version}<br />
-                                    © 2024 KiwiSmart Technologies<br />
-                                    Enhanced 3D Visualization with Three.js
-                                </small>
-                            </div>
-                            <div className="modal-footer">
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={() => setShowAboutModal(false)}
-                                >
-                                    {t.close}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Settings Modal */}
-            {showSettingsModal && (
-                <div
-                    className="modal fade show"
-                    style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
-                >
-                    <div className="modal-dialog modal-dialog-centered">
-                        <div className="modal-content">
-                            <div className="modal-header">
-                                <h5 className="modal-title">{t.settingsTitle}</h5>
-                                <button
-                                    type="button"
-                                    className="btn-close"
-                                    onClick={() => setShowSettingsModal(false)}
-                                ></button>
-                            </div>
-                            <div className="modal-body">
-                                <div className="mb-3">
-                                    <label className="form-label">{t.languageLabel}</label>
-                                    <select
-                                        className="form-select"
-                                        value={language}
-                                        onChange={(e) => setLanguage(e.target.value)}
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-danger"
+                                        onClick={() => setIsAutoLabeling(false)}
                                     >
-                                        <option value="en">English</option>
-                                        <option value="zh">中文 (Traditional Chinese)</option>
-                                    </select>
+                                        {t.abort}
+                                    </button>
                                 </div>
-                                <div className="mb-3">
-                                    <label className="form-label">{t.theme}</label>
-                                    <select className="form-select">
-                                        <option>Light</option>
-                                        <option>Dark</option>
-                                        <option>Auto</option>
-                                    </select>
-                                </div>
-                                <div className="mb-3">
-                                    <div className="form-check form-switch">
-                                        <input className="form-check-input" type="checkbox" id="autoSave" defaultChecked />
-                                        <label className="form-check-label" htmlFor="autoSave">
-                                            {t.autoSave}
-                                        </label>
-                                    </div>
-                                </div>
-                                <div className="mb-3">
-                                    <div className="form-check form-switch">
-                                        <input 
-                                            className="form-check-input" 
-                                            type="checkbox" 
-                                            id="enable3D" 
-                                            checked={is3DView}
-                                            onChange={() => handleToolClick('3d')}
-                                        />
-                                        <label className="form-check-label" htmlFor="enable3D">
-                                            Enable 3D View by Default
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="modal-footer">
-                                <button
-                                    type="button"
-                                    className="btn btn-secondary"
-                                    onClick={() => setShowSettingsModal(false)}
-                                >
-                                    {t.close}
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn btn-primary"
-                                    onClick={() => {
-                                        setShowSettingsModal(false);
-                                        addActivityLog('settingsSaved', 'success');
-                                    }}
-                                >
-                                    {t.save}
-                                </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )}
 
-            <input
-                ref={fileInputRef}
-                type="file"
-                className="d-none"
-                accept=".shp,.json,.geojson,.gpkg,.tiff,.tif,.jpg,.jpeg,.png,.gif,.bmp,.webp"
-                onChange={handleFileUpload}
-            />
+                {showSaveModal && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.saveAsTitle}</h5>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={() => setShowSaveModal(false)}
+                                    ></button>
+                                </div>
+                                <div className="modal-body">
+                                    <div className="mb-3">
+                                        <label className="form-label">{t.fileName}</label>
+                                        <input
+                                            type="text"
+                                            className="form-control"
+                                            value={saveAsName}
+                                            onChange={(e) => setSaveAsName(e.target.value)}
+                                            placeholder={t.enterFileName}
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setShowSaveModal(false)}
+                                    >
+                                        {t.cancel}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={handleSaveAsProject}
+                                    >
+                                        {t.save}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showAboutModal && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.aboutTitle}</h5>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={() => setShowAboutModal(false)}
+                                    ></button>
+                                </div>
+                                <div className="modal-body text-center">
+                                    <div style={{ fontSize: '3rem' }} className="mb-3">🗺️</div>
+                                    <h4>{t.appTitle}</h4>
+                                    <p className="text-muted">{t.aboutContent}</p>
+                                    <hr />
+                                    <small className="text-muted">
+                                        {t.version}<br />
+                                        © 2024 KiwiSmart Technologies<br />
+                                        Enhanced 3D Visualization with Three.js<br />
+                                        Interactive Camera Controls & Real-time Rendering
+                                    </small>
+                                </div>
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setShowAboutModal(false)}
+                                    >
+                                        {t.close}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showSettingsModal && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.settingsTitle}</h5>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={() => setShowSettingsModal(false)}
+                                    ></button>
+                                </div>
+                                <div className="modal-body">
+                                    <div className="mb-3">
+                                        <label className="form-label">{t.languageLabel}</label>
+                                        <select
+                                            className="form-select"
+                                            value={language}
+                                            onChange={(e) => setLanguage(e.target.value)}
+                                        >
+                                            <option value="en">English</option>
+                                            <option value="zh">中文 (Traditional Chinese)</option>
+                                        </select>
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label">{t.theme}</label>
+                                        <select className="form-select">
+                                            <option>Light</option>
+                                            <option>Dark</option>
+                                            <option>Auto</option>
+                                        </select>
+                                    </div>
+                                    <div className="mb-3">
+                                        <div className="form-check form-switch">
+                                            <input 
+                                                className="form-check-input" 
+                                                type="checkbox" 
+                                                id="showBuildingOutlines" 
+                                                checked={showBuildingOutlines}
+                                                onChange={() => setShowBuildingOutlines(!showBuildingOutlines)}
+                                            />
+                                            <label className="form-check-label" htmlFor="showBuildingOutlines">
+                                                Show Building Outlines
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setShowSettingsModal(false)}
+                                    >
+                                        {t.close}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={() => {
+                                            setShowSettingsModal(false);
+                                            addActivityLog('settingsSaved', 'success');
+                                        }}
+                                    >
+                                        {t.save}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="d-none"
+                    accept=".shp,.json,.geojson,.gpkg,.tiff,.tif,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+                    onChange={handleFileUpload}
+                />
+            </div>
         </div>
     );
 
@@ -2051,6 +1911,7 @@ const KiwiSmartApp = () => {
 
                 canvas {
                     outline: none;
+                    user-select: none;
                 }
 
                 .canvas-container {
@@ -2058,6 +1919,97 @@ const KiwiSmartApp = () => {
                     height: 100%;
                     position: relative;
                     overflow: hidden;
+                }
+
+                /* Enhanced 3D controls styling */
+                .btn-sm {
+                    padding: 0.25rem 0.5rem;
+                    font-size: 0.875rem;
+                }
+
+                /* Improved hover effects for 3D mode */
+                .btn:hover {
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                }
+
+                /* Enhanced dropdown animations */
+                .dropdown-menu {
+                    border: none;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                }
+
+                /* Smooth transitions for view switching */
+                .view-transition {
+                    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                /* Enhanced badge styling */
+                .badge {
+                    font-size: 0.75em;
+                    padding: 0.35em 0.65em;
+                }
+
+                /* Loading animation improvements */
+                .progress-bar-striped {
+                    background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent);
+                    background-size: 1rem 1rem;
+                }
+
+                /* Enhanced modal styling */
+                .modal-content {
+                    border: none;
+                    border-radius: 12px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                }
+
+                /* Improved responsive design */
+                @media (max-width: 768px) {
+                    .fab-tool {
+                        width: 35px !important;
+                        height: 35px !important;
+                        font-size: 1rem !important;
+                    }
+                    
+                    .btn-group-vertical .btn {
+                        padding: 0.375rem 0.5rem;
+                    }
+                }
+
+                /* Enhanced 3D scene styling */
+                .scene-info {
+                    background: linear-gradient(135deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 100%);
+                    border-radius: 8px;
+                    backdrop-filter: blur(10px);
+                }
+
+                /* Improved table styling */
+                .table-sm th,
+                .table-sm td {
+                    padding: 0.25rem 0.5rem;
+                    font-size: 0.875rem;
+                }
+
+                /* Enhanced sidebar styling */
+                .card-body {
+                    scrollbar-width: thin;
+                    scrollbar-color: #dee2e6 transparent;
+                }
+
+                .card-body::-webkit-scrollbar {
+                    width: 6px;
+                }
+
+                .card-body::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+
+                .card-body::-webkit-scrollbar-thumb {
+                    background-color: #dee2e6;
+                    border-radius: 3px;
+                }
+
+                .card-body::-webkit-scrollbar-thumb:hover {
+                    background-color: #adb5bd;
                 }
             `}</style>
 
