@@ -8,7 +8,10 @@ export const View3D = ({ canvasRef }) => {
                 className="w-100 h-100"
                 style={{ 
                     display: 'block',
-                    backgroundColor: '#87CEEB' // Sky blue background
+                    backgroundColor: '#87CEEB',
+                    minHeight: '100vh',
+                    width: '100%',
+                    height: '100%',
                 }}
             />
             {/* 3D View indicator */}
