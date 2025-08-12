@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import GeoTIFF from 'geotiff';
 
 const KiwiSmart3D = () => {
     const [isProjectOpen, setIsProjectOpen] = useState(false);
@@ -11,16 +10,12 @@ const KiwiSmart3D = () => {
     const [projectData, setProjectData] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(100);
     const [isDragOver, setIsDragOver] = useState(false);
-    const [visualizationMode, setVisualizationMode] = useState('realistic');
-    const [lightingMode, setLightingMode] = useState('day');
+    const [visualizationMode, setVisualizationMode] = useState('realistic'); // realistic, colorCoded, wireframe
+    const [lightingMode, setLightingMode] = useState('day'); // day, sunset, night
     const [showRoads, setShowRoads] = useState(true);
     const [showVegetation, setShowVegetation] = useState(true);
     const [showWater, setShowWater] = useState(true);
-    const [showTerrain, setShowTerrain] = useState(true);
-    const [terrainData, setTerrainData] = useState(null);
-    const [elevationScale, setElevationScale] = useState(1.0);
-    const [terrainResolution, setTerrainResolution] = useState(256);
-
+    
     // Enhanced sample data for realistic urban visualization
     const [labelData, setLabelData] = useState([
         // Residential buildings
@@ -28,22 +23,22 @@ const KiwiSmart3D = () => {
         { id: 2, groupId: 'RES_002', buildingType: 'residential', bounds: { x: -150, y: -120, width: 35, height: 25, height3D: 38 }, floors: 12, material: 'brick' },
         { id: 3, groupId: 'RES_003', buildingType: 'residential', bounds: { x: -100, y: -140, width: 45, height: 35, height3D: 52 }, floors: 17, material: 'glass' },
         { id: 4, groupId: 'RES_004', buildingType: 'residential', bounds: { x: -50, y: -110, width: 38, height: 28, height3D: 41 }, floors: 14, material: 'concrete' },
-
+        
         // Commercial/Office buildings
         { id: 5, groupId: 'COM_001', buildingType: 'commercial', bounds: { x: 50, y: -100, width: 60, height: 40, height3D: 120 }, floors: 30, material: 'glass' },
         { id: 6, groupId: 'COM_002', buildingType: 'commercial', bounds: { x: 120, y: -80, width: 55, height: 35, height3D: 95 }, floors: 24, material: 'glass' },
         { id: 7, groupId: 'COM_003', buildingType: 'commercial', bounds: { x: 180, y: -60, width: 70, height: 50, height3D: 150 }, floors: 40, material: 'glass' },
         { id: 8, groupId: 'COM_004', buildingType: 'commercial', bounds: { x: 260, y: -40, width: 65, height: 45, height3D: 135 }, floors: 35, material: 'glass' },
-
+        
         // Mixed-use and smaller buildings
         { id: 9, groupId: 'MIX_001', buildingType: 'mixed', bounds: { x: -180, y: 50, width: 30, height: 20, height3D: 25 }, floors: 8, material: 'brick' },
         { id: 10, groupId: 'MIX_002', buildingType: 'mixed', bounds: { x: -130, y: 70, width: 35, height: 25, height3D: 30 }, floors: 10, material: 'concrete' },
         { id: 11, groupId: 'MIX_003', buildingType: 'mixed', bounds: { x: -80, y: 90, width: 40, height: 30, height3D: 35 }, floors: 12, material: 'glass' },
-
+        
         // Industrial/Warehouse
         { id: 12, groupId: 'IND_001', buildingType: 'industrial', bounds: { x: 100, y: 100, width: 80, height: 60, height3D: 25 }, floors: 2, material: 'metal' },
         { id: 13, groupId: 'IND_002', buildingType: 'industrial', bounds: { x: 200, y: 120, width: 90, height: 70, height3D: 30 }, floors: 3, material: 'metal' },
-
+        
         // Additional residential cluster
         { id: 14, groupId: 'RES_005', buildingType: 'residential', bounds: { x: -50, y: 150, width: 25, height: 20, height3D: 20 }, floors: 6, material: 'brick' },
         { id: 15, groupId: 'RES_006', buildingType: 'residential', bounds: { x: -20, y: 170, width: 28, height: 22, height3D: 22 }, floors: 7, material: 'brick' },
@@ -57,13 +52,13 @@ const KiwiSmart3D = () => {
         { id: 'main_2', type: 'highway', points: [[-300, 200], [300, 200]], width: 12 },
         { id: 'main_3', type: 'highway', points: [[-200, -300], [-200, 300]], width: 10 },
         { id: 'main_4', type: 'highway', points: [[200, -300], [200, 300]], width: 10 },
-
+        
         // Secondary roads
         { id: 'sec_1', type: 'street', points: [[-100, -300], [-100, 300]], width: 8 },
         { id: 'sec_2', type: 'street', points: [[100, -300], [100, 300]], width: 8 },
         { id: 'sec_3', type: 'street', points: [[-300, -100], [300, -100]], width: 8 },
         { id: 'sec_4', type: 'street', points: [[-300, 100], [300, 100]], width: 8 },
-
+        
         // Local streets
         { id: 'local_1', type: 'local', points: [[-50, -300], [-50, 300]], width: 6 },
         { id: 'local_2', type: 'local', points: [[50, -300], [50, 300]], width: 6 },
@@ -76,8 +71,8 @@ const KiwiSmart3D = () => {
         { id: 'park_1', type: 'park', bounds: { x: -250, y: -50, width: 80, height: 60 } },
         { id: 'park_2', type: 'park', bounds: { x: 150, y: 50, width: 70, height: 50 } },
         { id: 'water_1', type: 'water', bounds: { x: -80, y: 0, width: 160, height: 40 } },
-        { id: 'trees_1', type: 'trees', bounds: { x: -300, y: -300, width: 600, height: 50 } },
-        { id: 'trees_2', type: 'trees', bounds: { x: -300, y: 250, width: 600, height: 50 } }
+        { id: 'trees_1', type: 'trees', bounds: { x: -300, y: -300, width: 600, height: 50 } }, // Tree line
+        { id: 'trees_2', type: 'trees', bounds: { x: -300, y: 250, width: 600, height: 50 } } // Tree line
     ];
 
     const canvasRef = useRef(null);
@@ -92,7 +87,7 @@ const KiwiSmart3D = () => {
     const translations = {
         en: {
             appTitle: 'KiwiSmart 3D',
-            appSubtitle: 'Advanced Urban Visualization System with TIFF Support',
+            appSubtitle: 'Advanced Urban Visualization System',
             newProject: 'Start New Project',
             openProject: 'Open Existing Project',
             toggle3D: 'Toggle 3D View',
@@ -108,18 +103,15 @@ const KiwiSmart3D = () => {
             showRoads: 'Show Roads',
             showVegetation: 'Show Vegetation',
             showWater: 'Show Water Bodies',
-            showTerrain: 'Show Terrain',
             uploadFile: 'Upload 3D City Data',
-            supportedFormats: 'Supported: GeoJSON, CityJSON, KML, TIFF, 3D Models',
+            supportedFormats: 'Supported: GeoJSON, CityJSON, KML, 3D Models',
             buildings: 'Buildings',
             roads: 'Roads',
-            landscape: 'Landscape',
-            elevationScale: 'Elevation Scale',
-            terrainResolution: 'Terrain Resolution'
+            landscape: 'Landscape'
         },
         zh: {
             appTitle: 'KiwiSmart 3D',
-            appSubtitle: '支援TIFF格式的先進城市視覺化系統',
+            appSubtitle: '先進城市視覺化系統',
             newProject: '開始新專案',
             openProject: '開啟現有專案',
             toggle3D: '切換 3D 視圖',
@@ -135,152 +127,20 @@ const KiwiSmart3D = () => {
             showRoads: '顯示道路',
             showVegetation: '顯示植被',
             showWater: '顯示水體',
-            showTerrain: '顯示地形',
             uploadFile: '上傳 3D 城市資料',
-            supportedFormats: '支援格式：GeoJSON、CityJSON、KML、TIFF、3D 模型',
+            supportedFormats: '支援格式：GeoJSON、CityJSON、KML、3D 模型',
             buildings: '建築物',
             roads: '道路',
-            landscape: '景觀',
-            elevationScale: '高程比例',
-            terrainResolution: '地形解析度'
+            landscape: '景觀'
         }
     };
 
     const t = translations[language];
 
-    // Function to read TIFF files and create terrain
-    const readTIFFFile = async (file) => {
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
-            const image = await tiff.getImage();
-
-            const raster = await image.readRasters({ interleave: true });
-            const width = image.getWidth();
-            const height = image.getHeight();
-
-            const bbox = image.getBoundingBox(); // [minX, minY, maxX, maxY] dalam koordinat geospasial
-            const elevationData = raster[0]; // jika channel pertama adalah elevasi
-
-            return {
-                width,
-                height,
-                data: elevationData,
-                bounds: {
-                    minX: bbox[0],
-                    maxX: bbox[2],
-                    minY: bbox[1],
-                    maxY: bbox[3]
-                },
-                synthetic: false
-            };
-        } catch (error) {
-            console.error("TIFF read error:", error);
-            return createSyntheticTerrain(file.name);
-        }
-    };
-
-
-    // Create synthetic terrain data when TIFF parsing fails
-    const createSyntheticTerrain = (fileName, arrayBuffer = null) => {
-        console.log('Creating synthetic terrain for:', fileName);
-
-        const width = Math.min(terrainResolution, 512); // Limit resolution for performance
-        const height = Math.min(terrainResolution, 512);
-        const elevationData = new Float32Array(width * height);
-
-        // Create different terrain patterns based on filename
-        const fileNameLower = fileName.toLowerCase();
-        let terrainType = 'hills';
-
-        if (fileNameLower.includes('mountain') || fileNameLower.includes('peak')) {
-            terrainType = 'mountains';
-        } else if (fileNameLower.includes('valley') || fileNameLower.includes('river')) {
-            terrainType = 'valley';
-        } else if (fileNameLower.includes('flat') || fileNameLower.includes('plain')) {
-            terrainType = 'flat';
-        }
-
-        // Generate terrain based on type
-        for (let i = 0; i < width; i++) {
-            for (let j = 0; j < height; j++) {
-                const x = (i / width) * 6 - 3; // Extend range for more variation
-                const y = (j / height) * 6 - 3;
-
-                let elevation = 0;
-
-                switch (terrainType) {
-                    case 'mountains':
-                        elevation += 50 * Math.sin(x * 0.3) * Math.cos(y * 0.3);
-                        elevation += 30 * Math.sin(x * 0.8) * Math.cos(y * 0.8);
-                        elevation += 15 * Math.sin(x * 1.5) * Math.cos(y * 1.5);
-                        elevation += 20 * Math.cos(x * 0.5 + y * 0.5);
-                        break;
-                    case 'valley':
-                        elevation += -20 + 30 * Math.exp(-(x * x + y * y) * 0.3);
-                        elevation += 10 * Math.sin(x * 1.2) * Math.cos(y * 1.2);
-                        elevation += 5 * Math.sin(x * 2.0) * Math.cos(y * 2.0);
-                        break;
-                    case 'flat':
-                        elevation += 2 * Math.sin(x * 0.8) * Math.cos(y * 0.8);
-                        elevation += 1 * Math.sin(x * 2.0) * Math.cos(y * 2.0);
-                        break;
-                    default: // hills
-                        elevation += 25 * Math.sin(x * 0.5) * Math.cos(y * 0.5);
-                        elevation += 15 * Math.sin(x * 1.2) * Math.cos(y * 1.2);
-                        elevation += 8 * Math.sin(x * 2.5) * Math.cos(y * 2.5);
-                        elevation += 12 * Math.cos(x * 0.8 + y * 0.8);
-                        break;
-                }
-
-                // Add noise for realism
-                elevation += (Math.random() - 0.5) * 4;
-
-                // Ensure reasonable elevation range
-                elevation = Math.max(elevation, -10);
-                elevation = Math.min(elevation, 100);
-
-                elevationData[i * height + j] = elevation;
-            }
-        }
-
-        return {
-            width: width,
-            height: height,
-            data: elevationData,
-            bounds: { minX: -400, maxX: 400, minY: -400, maxY: 400 },
-            synthetic: true,
-            terrainType: terrainType
-        };
-    };
-
-    // Create realistic terrain from elevation data
-    const createTerrain = (terrainData) => {
-        const { width, height, data, bounds } = terrainData;
-        const geometry = new THREE.PlaneGeometry(
-            bounds.maxX - bounds.minX,
-            bounds.maxY - bounds.minY,
-            width - 1,
-            height - 1
-        );
-
-        const vertices = geometry.attributes.position.array;
-        for (let i = 0; i < data.length; i++) {
-            vertices[i * 3 + 2] = data[i] * elevationScale; // apply elevasi asli
-        }
-
-        geometry.computeVertexNormals();
-        const material = new THREE.MeshStandardMaterial({ color: 0x888866, wireframe: false });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        return mesh;
-    };
-
-
     // Enhanced material creation based on building type and visualization mode
     const createBuildingMaterial = (building, mode) => {
         const { buildingType, material, floors } = building;
-
+        
         if (mode === 'wireframe') {
             return new THREE.MeshBasicMaterial({
                 color: 0x00ff00,
@@ -289,13 +149,13 @@ const KiwiSmart3D = () => {
                 opacity: 0.8
             });
         }
-
+        
         if (mode === 'colorCoded') {
             const colors = {
-                residential: 0x4CAF50,
-                commercial: 0x2196F3,
-                industrial: 0xFF9800,
-                mixed: 0x9C27B0
+                residential: 0x4CAF50, // Green
+                commercial: 0x2196F3,  // Blue
+                industrial: 0xFF9800,  // Orange
+                mixed: 0x9C27B0       // Purple
             };
             return new THREE.MeshLambertMaterial({
                 color: colors[buildingType] || 0x9E9E9E,
@@ -303,155 +163,153 @@ const KiwiSmart3D = () => {
                 opacity: 0.9
             });
         }
-
-        // Realistic mode with enhanced materials
-        let baseColor, roughness, metalness, emissive;
-
+        
+        // Realistic mode
+        let baseColor, roughness, metalness;
+        
         switch (material) {
             case 'glass':
-                baseColor = new THREE.Color(0.7, 0.8, 0.9);
-                roughness = 0.05;
+                baseColor = new THREE.Color(0.8, 0.9, 1.0);
+                roughness = 0.1;
                 metalness = 0.1;
-                emissive = new THREE.Color(0.05, 0.05, 0.1);
                 break;
             case 'concrete':
-                baseColor = new THREE.Color(0.6, 0.6, 0.6);
-                roughness = 0.9;
+                baseColor = new THREE.Color(0.7, 0.7, 0.7);
+                roughness = 0.8;
                 metalness = 0.0;
-                emissive = new THREE.Color(0, 0, 0);
                 break;
             case 'brick':
-                baseColor = new THREE.Color(0.7, 0.4, 0.3);
-                roughness = 0.95;
+                baseColor = new THREE.Color(0.8, 0.5, 0.4);
+                roughness = 0.9;
                 metalness = 0.0;
-                emissive = new THREE.Color(0, 0, 0);
                 break;
             case 'metal':
-                baseColor = new THREE.Color(0.5, 0.5, 0.6);
-                roughness = 0.2;
-                metalness = 0.9;
-                emissive = new THREE.Color(0, 0, 0);
+                baseColor = new THREE.Color(0.6, 0.6, 0.7);
+                roughness = 0.3;
+                metalness = 0.8;
                 break;
             default:
                 baseColor = new THREE.Color(0.7, 0.7, 0.7);
                 roughness = 0.7;
                 metalness = 0.0;
-                emissive = new THREE.Color(0, 0, 0);
         }
-
+        
         // Vary color slightly based on height/floors for more realism
         const heightVariation = Math.min(floors / 50, 0.3);
-        baseColor.multiplyScalar(1 - heightVariation * 0.15);
-
-        // Add subtle lighting at night
-        if (lightingMode === 'night' && Math.random() > 0.3) {
-            emissive = new THREE.Color(0.1, 0.08, 0.05);
-        }
-
+        baseColor.multiplyScalar(1 - heightVariation * 0.2);
+        
         return new THREE.MeshStandardMaterial({
             color: baseColor,
             roughness: roughness,
             metalness: metalness,
-            emissive: emissive,
             transparent: material === 'glass',
             opacity: material === 'glass' ? 0.7 : 1.0
         });
     };
 
-    // Create road geometry with realistic appearance
+    // Create road geometry
     const createRoadGeometry = (road) => {
         const points = road.points.map(p => new THREE.Vector2(p[0], p[1]));
+        const shape = new THREE.Shape();
+        
+        // Create road as extruded rectangle
         const width = road.width;
         const length = Math.sqrt(
-            Math.pow(points[1].x - points[0].x, 2) +
+            Math.pow(points[1].x - points[0].x, 2) + 
             Math.pow(points[1].y - points[0].y, 2)
         );
-
-        const geometry = new THREE.PlaneGeometry(width, length);
-        return geometry;
+        
+        shape.moveTo(-width/2, 0);
+        shape.lineTo(width/2, 0);
+        shape.lineTo(width/2, length);
+        shape.lineTo(-width/2, length);
+        shape.lineTo(-width/2, 0);
+        
+        const extrudeSettings = {
+            depth: 0.5,
+            bevelEnabled: false
+        };
+        
+        return new THREE.ExtrudeGeometry(shape, extrudeSettings);
     };
 
-    // Create landscape elements with better materials
+    // Create landscape elements
     const createLandscapeElement = (element) => {
         const { type, bounds } = element;
         const geometry = new THREE.PlaneGeometry(bounds.width, bounds.height);
         let material;
-
+        
         switch (type) {
             case 'park':
-                material = new THREE.MeshLambertMaterial({
+                material = new THREE.MeshLambertMaterial({ 
                     color: 0x4CAF50,
                     transparent: true,
-                    opacity: 0.8
+                    opacity: 0.7
                 });
                 break;
             case 'water':
-                material = new THREE.MeshStandardMaterial({
-                    color: 0x1976D2,
+                material = new THREE.MeshStandardMaterial({ 
+                    color: 0x2196F3,
                     transparent: true,
-                    opacity: 0.85,
-                    roughness: 0.0,
-                    metalness: 0.0
+                    opacity: 0.8,
+                    roughness: 0.1,
+                    metalness: 0.1
                 });
                 break;
             case 'trees':
-                material = new THREE.MeshLambertMaterial({
+                material = new THREE.MeshLambertMaterial({ 
                     color: 0x2E7D32,
                     transparent: true,
-                    opacity: 0.7
+                    opacity: 0.6
                 });
                 break;
             default:
                 material = new THREE.MeshLambertMaterial({ color: 0x8BC34A });
         }
-
+        
         const mesh = new THREE.Mesh(geometry, material);
         mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(bounds.x + bounds.width / 2, 1, bounds.y + bounds.height / 2);
-        mesh.receiveShadow = true;
-
+        mesh.position.set(bounds.x + bounds.width/2, 0.1, bounds.y + bounds.height/2);
+        
         return mesh;
     };
 
-    // Enhanced lighting setup
+    // Setup lighting based on mode
     const setupLighting = (scene, mode) => {
         // Clear existing lights
         const lights = scene.children.filter(child => child.isLight);
         lights.forEach(light => scene.remove(light));
-
+        
         let ambientIntensity, directionalColor, directionalIntensity, directionalPosition;
-
+        
         switch (mode) {
             case 'day':
-                ambientIntensity = 0.5;
+                ambientIntensity = 0.6;
                 directionalColor = 0xffffff;
-                directionalIntensity = 1.2;
+                directionalIntensity = 1.0;
                 directionalPosition = [1000, 2000, 1000];
-                scene.background = new THREE.Color(0x87CEEB);
-                scene.fog = new THREE.Fog(0x87CEEB, 1000, 5000);
+                scene.background = new THREE.Color(0x87CEEB); // Sky blue
                 break;
             case 'sunset':
-                ambientIntensity = 0.3;
+                ambientIntensity = 0.4;
                 directionalColor = 0xffa500;
-                directionalIntensity = 0.9;
+                directionalIntensity = 0.8;
                 directionalPosition = [2000, 500, 1000];
-                scene.background = new THREE.Color(0xFF6B35);
-                scene.fog = new THREE.Fog(0xFF6B35, 800, 4000);
+                scene.background = new THREE.Color(0xFF6B35); // Orange sunset
                 break;
             case 'night':
-                ambientIntensity = 0.15;
+                ambientIntensity = 0.2;
                 directionalColor = 0x4169E1;
-                directionalIntensity = 0.4;
+                directionalIntensity = 0.3;
                 directionalPosition = [500, 1000, 500];
-                scene.background = new THREE.Color(0x191970);
-                scene.fog = new THREE.Fog(0x191970, 500, 3000);
+                scene.background = new THREE.Color(0x191970); // Midnight blue
                 break;
         }
-
+        
         // Ambient light
         const ambientLight = new THREE.AmbientLight(0x404040, ambientIntensity);
         scene.add(ambientLight);
-
+        
         // Directional light (sun/moon)
         const directionalLight = new THREE.DirectionalLight(directionalColor, directionalIntensity);
         directionalLight.position.set(...directionalPosition);
@@ -465,27 +323,14 @@ const KiwiSmart3D = () => {
         directionalLight.shadow.camera.top = 1000;
         directionalLight.shadow.camera.bottom = -1000;
         scene.add(directionalLight);
-
-        // Hemisphere light for more natural lighting
+        
+        // Additional hemisphere light for more natural lighting
         const hemisphereLight = new THREE.HemisphereLight(
             mode === 'night' ? 0x080820 : 0x87CEEB,
             mode === 'night' ? 0x080808 : 0x8B4513,
-            0.3
+            0.4
         );
         scene.add(hemisphereLight);
-
-        // Add point lights for night mode (street lighting effect)
-        if (mode === 'night') {
-            for (let i = 0; i < 10; i++) {
-                const pointLight = new THREE.PointLight(0xffffff, 0.5, 100);
-                pointLight.position.set(
-                    (Math.random() - 0.5) * 400,
-                    20,
-                    (Math.random() - 0.5) * 400
-                );
-                scene.add(pointLight);
-            }
-        }
     };
 
     // Enhanced Three.js setup
@@ -501,18 +346,18 @@ const KiwiSmart3D = () => {
 
             // Initialize Scene
             sceneRef.current = new THREE.Scene();
-
+            
             // Calculate scene bounds
             const validBuildings = labelData.filter(b => b.bounds);
             if (validBuildings.length === 0) return;
-
+            
             const bounds = {
                 minX: Math.min(...validBuildings.map(b => b.bounds.x)),
                 maxX: Math.max(...validBuildings.map(b => b.bounds.x + b.bounds.width)),
                 minY: Math.min(...validBuildings.map(b => b.bounds.y)),
                 maxY: Math.max(...validBuildings.map(b => b.bounds.y + b.bounds.height))
             };
-
+            
             const centerX = (bounds.minX + bounds.maxX) / 2;
             const centerY = (bounds.minY + bounds.maxY) / 2;
             const sceneSize = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
@@ -520,7 +365,7 @@ const KiwiSmart3D = () => {
             // Initialize Camera
             const aspect = canvasRef.current.clientWidth / canvasRef.current.clientHeight;
             cameraRef.current = new THREE.PerspectiveCamera(60, aspect, 1, sceneSize * 10);
-
+            
             const initialDistance = sceneSize * 1.5;
             cameraRef.current.position.set(
                 centerX + initialDistance * 0.8,
@@ -529,11 +374,11 @@ const KiwiSmart3D = () => {
             );
             cameraRef.current.lookAt(centerX, 0, centerY);
 
-            // Initialize Renderer with enhanced settings
-            rendererRef.current = new THREE.WebGLRenderer({
-                canvas: canvasRef.current,
+            // Initialize Renderer
+            rendererRef.current = new THREE.WebGLRenderer({ 
+                canvas: canvasRef.current, 
                 antialias: true,
-                alpha: true
+                alpha: true 
             });
             rendererRef.current.setSize(canvasRef.current.clientWidth, canvasRef.current.clientHeight);
             rendererRef.current.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -541,20 +386,19 @@ const KiwiSmart3D = () => {
             rendererRef.current.shadowMap.type = THREE.PCFSoftShadowMap;
             rendererRef.current.toneMapping = THREE.ACESFilmicToneMapping;
             rendererRef.current.toneMappingExposure = 1.0;
-            rendererRef.current.outputEncoding = THREE.sRGBEncoding;
 
-            // Enhanced mouse controls
+            // Setup controls (using basic mouse controls since OrbitControls import might not work)
             const handleMouseMove = (event) => {
-                if (event.buttons === 1) {
+                if (event.buttons === 1) { // Left mouse button
                     const deltaX = event.movementX * 0.01;
                     const deltaY = event.movementY * 0.01;
-
+                    
                     const spherical = new THREE.Spherical();
                     spherical.setFromVector3(cameraRef.current.position.clone().sub(new THREE.Vector3(centerX, 0, centerY)));
                     spherical.theta -= deltaX;
                     spherical.phi += deltaY;
                     spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
-
+                    
                     const newPosition = new THREE.Vector3().setFromSpherical(spherical).add(new THREE.Vector3(centerX, 0, centerY));
                     cameraRef.current.position.copy(newPosition);
                     cameraRef.current.lookAt(centerX, 0, centerY);
@@ -574,76 +418,38 @@ const KiwiSmart3D = () => {
             // Setup lighting
             setupLighting(sceneRef.current, lightingMode);
 
-            // Create terrain
-            if (showTerrain && terrainData) {
-                const terrain = createTerrain(terrainData);
-                if (terrain) {
-                    sceneRef.current.add(terrain);
-                }
-            } else if (showTerrain) {
-                // Create default ground with some elevation variation
-                const groundSize = sceneSize * 2;
-                const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 100, 100);
+            // Create ground
+            const groundSize = sceneSize * 2;
+            const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
+            const groundMaterial = new THREE.MeshLambertMaterial({ 
+                color: 0xf0f0f0,
+                transparent: true,
+                opacity: 0.8
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.set(centerX, -1, centerY);
+            ground.receiveShadow = true;
+            sceneRef.current.add(ground);
 
-                // Add slight elevation variation to ground
-                const vertices = groundGeometry.attributes.position.array;
-                for (let i = 0; i < vertices.length; i += 3) {
-                    vertices[i + 2] = (Math.random() - 0.5) * 5; // Z coordinate
-                }
-                groundGeometry.computeVertexNormals();
-
-                const groundMaterial = new THREE.MeshStandardMaterial({
-                    color: 0x5d7c47,
-                    roughness: 0.8,
-                    metalness: 0.0
-                });
-
-                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-                ground.rotation.x = -Math.PI / 2;
-                ground.position.set(centerX, -2, centerY);
-                ground.receiveShadow = true;
-                sceneRef.current.add(ground);
-            }
-
-            // Create roads with realistic materials
+            // Create roads
             if (showRoads) {
                 roadData.forEach(road => {
-                    const roadGeometry = createRoadGeometry(road);
-                    const roadMaterial = new THREE.MeshStandardMaterial({
-                        color: road.type === 'highway' ? 0x2C2C2C : 0x404040,
-                        roughness: 0.7,
-                        metalness: 0.1
+                    const roadGeometry = new THREE.PlaneGeometry(
+                        Math.abs(road.points[1][0] - road.points[0][0]) || road.width,
+                        Math.abs(road.points[1][1] - road.points[0][1]) || road.width
+                    );
+                    const roadMaterial = new THREE.MeshLambertMaterial({ 
+                        color: road.type === 'highway' ? 0x2C2C2C : 0x404040 
                     });
                     const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
                     roadMesh.rotation.x = -Math.PI / 2;
                     roadMesh.position.set(
                         (road.points[0][0] + road.points[1][0]) / 2,
-                        0.5,
+                        0,
                         (road.points[0][1] + road.points[1][1]) / 2
                     );
-                    roadMesh.receiveShadow = true;
                     sceneRef.current.add(roadMesh);
-
-                    // Add road markings
-                    if (road.type !== 'local') {
-                        const markingGeometry = new THREE.PlaneGeometry(
-                            road.width * 0.1,
-                            Math.abs(road.points[1][1] - road.points[0][1]) || Math.abs(road.points[1][0] - road.points[0][0])
-                        );
-                        const markingMaterial = new THREE.MeshBasicMaterial({
-                            color: 0xFFFFFF,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        const markingMesh = new THREE.Mesh(markingGeometry, markingMaterial);
-                        markingMesh.rotation.x = -Math.PI / 2;
-                        markingMesh.position.set(
-                            (road.points[0][0] + road.points[1][0]) / 2,
-                            0.6,
-                            (road.points[0][1] + road.points[1][1]) / 2
-                        );
-                        sceneRef.current.add(markingMesh);
-                    }
                 });
             }
 
@@ -653,30 +459,6 @@ const KiwiSmart3D = () => {
                     if ((element.type === 'park' || element.type === 'trees') && showVegetation) {
                         const landscapeElement = createLandscapeElement(element);
                         sceneRef.current.add(landscapeElement);
-
-                        // Add trees for parks
-                        if (element.type === 'park') {
-                            const treeCount = Math.floor((element.bounds.width * element.bounds.height) / 200);
-                            for (let i = 0; i < treeCount; i++) {
-                                const treeGeometry = new THREE.ConeGeometry(2, 8, 8);
-                                const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
-                                const tree = new THREE.Mesh(treeGeometry, treeMaterial);
-
-                                const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3);
-                                const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-                                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-                                trunk.position.y = -2.5;
-                                tree.add(trunk);
-
-                                tree.position.set(
-                                    element.bounds.x + Math.random() * element.bounds.width,
-                                    4,
-                                    element.bounds.y + Math.random() * element.bounds.height
-                                );
-                                tree.castShadow = true;
-                                sceneRef.current.add(tree);
-                            }
-                        }
                     } else if (element.type === 'water' && showWater) {
                         const landscapeElement = createLandscapeElement(element);
                         sceneRef.current.add(landscapeElement);
@@ -684,7 +466,7 @@ const KiwiSmart3D = () => {
                 });
             }
 
-            // Create buildings with enhanced details
+            // Create buildings
             validBuildings.forEach((building) => {
                 const width = Math.max(building.bounds.width, 5);
                 const depth = Math.max(building.bounds.height, 5);
@@ -692,7 +474,7 @@ const KiwiSmart3D = () => {
 
                 const geometry = new THREE.BoxGeometry(width, height, depth);
                 const material = createBuildingMaterial(building, visualizationMode);
-
+                
                 const buildingMesh = new THREE.Mesh(geometry, material);
                 buildingMesh.position.set(
                     building.bounds.x + width / 2,
@@ -705,29 +487,12 @@ const KiwiSmart3D = () => {
 
                 sceneRef.current.add(buildingMesh);
 
-                // Add building details
-                if (visualizationMode === 'realistic') {
-                    // Add windows
-                    const windowCount = Math.floor(building.floors / 2);
-                    for (let i = 0; i < windowCount; i++) {
-                        const windowGeometry = new THREE.PlaneGeometry(width * 0.8, 2);
-                        const windowMaterial = new THREE.MeshBasicMaterial({
-                            color: lightingMode === 'night' ? 0xFFFF99 : 0x87CEEB,
-                            transparent: true,
-                            opacity: lightingMode === 'night' ? 0.8 : 0.3
-                        });
-                        const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
-                        windowMesh.position.set(0, (i - windowCount / 2) * 4, depth / 2 + 0.1);
-                        buildingMesh.add(windowMesh);
-                    }
-                }
-
                 // Add building outlines for better definition
                 if (visualizationMode !== 'wireframe') {
                     const edges = new THREE.EdgesGeometry(geometry);
-                    const lineMaterial = new THREE.LineBasicMaterial({
-                        color: 0x000000,
-                        opacity: 0.2,
+                    const lineMaterial = new THREE.LineBasicMaterial({ 
+                        color: 0x000000, 
+                        opacity: 0.3,
                         transparent: true
                     });
                     const wireframe = new THREE.LineSegments(edges, lineMaterial);
@@ -739,13 +504,6 @@ const KiwiSmart3D = () => {
             // Animation loop
             const animate = () => {
                 animationRef.current = requestAnimationFrame(animate);
-
-                // Add subtle camera movement for more dynamic feel
-                if (cameraRef.current) {
-                    const time = Date.now() * 0.0001;
-                    cameraRef.current.position.y += Math.sin(time * 2) * 0.5;
-                }
-
                 rendererRef.current.render(sceneRef.current, cameraRef.current);
             };
             animate();
@@ -776,134 +534,87 @@ const KiwiSmart3D = () => {
                 }
             };
         }
-    }, [is3DView, labelData, visualizationMode, lightingMode, showRoads, showVegetation, showWater, showTerrain, terrainData, elevationScale]);
+    }, [is3DView, labelData, visualizationMode, lightingMode, showRoads, showVegetation, showWater]);
 
-    // Enhanced file upload handler with improved TIFF support
-    const handleFileUpload = async (event) => {
+    // File upload handler
+    const handleFileUpload = (event) => {
         const file = event.target.files[0];
         if (file) {
             setUploadedFile(file);
-
-            // Show loading indicator
-            const loadingToast = document.createElement('div');
-            loadingToast.className = 'position-fixed top-50 start-50 translate-middle bg-dark text-white p-3 rounded';
-            loadingToast.style.zIndex = '9999';
-            loadingToast.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                    <span>Loading ${file.name}...</span>
-                </div>
-            `;
-            document.body.appendChild(loadingToast);
-
-            try {
-                if (file.type === 'image/tiff' || file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
-                    console.log('Processing TIFF file:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2) + 'MB');
-
-                    const tiffData = await readTIFFFile(file);
-                    setTerrainData(tiffData);
-
-                    let statusMessage = 'TIFF Elevation Data';
-                    if (tiffData.synthetic) {
-                        statusMessage = `Synthetic ${tiffData.terrainType} terrain (TIFF parsing fallback)`;
-                    }
-
-                    setProjectData({
-                        name: file.name,
-                        type: statusMessage,
-                        buildings: labelData.length,
-                        terrain: true,
-                        terrainType: tiffData.terrainType || 'elevation'
-                    });
-                    setIsProjectOpen(true);
-                    setIs3DView(true);
-
-                } else if (file.type === 'application/json' || file.name.endsWith('.geojson')) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            const geojson = JSON.parse(e.target.result);
-                            console.log('GeoJSON loaded:', geojson);
-
-                            const newLabelData = geojson.features.map((feature, index) => {
-                                const properties = feature.properties || {};
-                                const geometry = feature.geometry;
-
-                                let bounds = { x: 0, y: 0, width: 20, height: 20 };
-
-                                if (geometry && geometry.coordinates) {
-                                    let coords = [];
-                                    if (geometry.type === 'Polygon') {
-                                        coords = geometry.coordinates[0];
-                                    } else if (geometry.type === 'Point') {
-                                        coords = [geometry.coordinates];
-                                    }
-
-                                    if (coords.length > 0) {
-                                        const xs = coords.map(c => c[0] * 1000);
-                                        const ys = coords.map(c => c[1] * 1000);
-                                        bounds = {
-                                            x: Math.min(...xs),
-                                            y: Math.min(...ys),
-                                            width: Math.max(...xs) - Math.min(...xs) || 20,
-                                            height: Math.max(...ys) - Math.min(...ys) || 20
-                                        };
-                                    }
+            
+            if (file.type === 'application/json' || file.name.endsWith('.geojson')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const geojson = JSON.parse(e.target.result);
+                        console.log('GeoJSON loaded:', geojson);
+                        
+                        // Process GeoJSON features into building data
+                        const newLabelData = geojson.features.map((feature, index) => {
+                            const properties = feature.properties || {};
+                            const geometry = feature.geometry;
+                            
+                            let bounds = { x: 0, y: 0, width: 20, height: 20 };
+                            
+                            if (geometry && geometry.coordinates) {
+                                // Extract coordinates and calculate bounds
+                                let coords = [];
+                                if (geometry.type === 'Polygon') {
+                                    coords = geometry.coordinates[0];
+                                } else if (geometry.type === 'Point') {
+                                    coords = [geometry.coordinates];
                                 }
-
-                                return {
-                                    id: index + 1,
-                                    groupId: `GROUP_${String(index + 1).padStart(3, '0')}`,
-                                    buildingType: properties.building || properties.landuse || 'residential',
-                                    bounds: {
-                                        ...bounds,
-                                        height3D: properties.height || properties.levels * 3 || Math.random() * 100 + 20
-                                    },
-                                    floors: properties.levels || Math.floor((properties.height || 30) / 3),
-                                    material: properties.material || 'concrete'
-                                };
-                            });
-
-                            setLabelData(newLabelData);
-                            setProjectData({
-                                name: file.name,
-                                type: 'GeoJSON Building Data',
-                                buildings: newLabelData.length
-                            });
-                            setIsProjectOpen(true);
-                            setIs3DView(true);
-
-                        } catch (error) {
-                            console.error('Error parsing GeoJSON:', error);
-                            alert('Error parsing GeoJSON file. Please check the format.');
-                        } finally {
-                            document.body.removeChild(loadingToast);
-                        }
-                    };
-                    reader.readAsText(file);
-                } else {
-                    // Handle other file types
-                    setProjectData({
-                        name: file.name,
-                        type: 'Unknown format - using sample data',
-                        buildings: labelData.length
-                    });
-                    setIsProjectOpen(true);
-                    setIs3DView(true);
-                    document.body.removeChild(loadingToast);
-                }
-            } catch (error) {
-                console.error('Error processing file:', error);
-                alert(`Error processing file: ${error.message || 'Unknown error'}`);
-                document.body.removeChild(loadingToast);
+                                
+                                if (coords.length > 0) {
+                                    const xs = coords.map(c => c[0] * 1000); // Scale up
+                                    const ys = coords.map(c => c[1] * 1000);
+                                    bounds = {
+                                        x: Math.min(...xs),
+                                        y: Math.min(...ys),
+                                        width: Math.max(...xs) - Math.min(...xs) || 20,
+                                        height: Math.max(...ys) - Math.min(...ys) || 20
+                                    };
+                                }
+                            }
+                            
+                            return {
+                                id: index + 1,
+                                groupId: `GROUP_${String(index + 1).padStart(3, '0')}`,
+                                buildingType: properties.building || properties.landuse || 'residential',
+                                bounds: {
+                                    ...bounds,
+                                    height3D: properties.height || properties.levels * 3 || Math.random() * 100 + 20
+                                },
+                                floors: properties.levels || Math.floor((properties.height || 30) / 3),
+                                material: properties.material || 'concrete'
+                            };
+                        });
+                        
+                        setLabelData(newLabelData);
+                        setProjectData({
+                            name: file.name,
+                            type: file.type,
+                            buildings: newLabelData.length
+                        });
+                        setIsProjectOpen(true);
+                        setIs3DView(true);
+                        
+                    } catch (error) {
+                        console.error('Error parsing GeoJSON:', error);
+                        alert('Error parsing file. Please check the format.');
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                // Handle other file types or show sample data
+                setProjectData({
+                    name: file.name,
+                    type: file.type,
+                    buildings: labelData.length
+                });
+                setIsProjectOpen(true);
+                setIs3DView(true);
             }
-
-            // Remove loading toast after delay if still exists
-            setTimeout(() => {
-                if (document.body.contains(loadingToast)) {
-                    document.body.removeChild(loadingToast);
-                }
-            }, 5000);
         }
     };
 
@@ -928,10 +639,12 @@ const KiwiSmart3D = () => {
     };
 
     const loadSampleCity = (cityType) => {
+        // Generate different sample city layouts
         let sampleData = [];
-
+        
         switch (cityType) {
             case 'downtown':
+                // Dense urban core with tall buildings
                 for (let i = 0; i < 50; i++) {
                     const x = (Math.random() - 0.5) * 400;
                     const y = (Math.random() - 0.5) * 400;
@@ -951,8 +664,9 @@ const KiwiSmart3D = () => {
                     });
                 }
                 break;
-
+                
             case 'residential':
+                // Suburban residential area
                 for (let i = 0; i < 80; i++) {
                     const x = (Math.random() - 0.5) * 600;
                     const y = (Math.random() - 0.5) * 600;
@@ -972,8 +686,9 @@ const KiwiSmart3D = () => {
                     });
                 }
                 break;
-
+                
             case 'mixed':
+                // Mixed-use development
                 for (let i = 0; i < 60; i++) {
                     const x = (Math.random() - 0.5) * 500;
                     const y = (Math.random() - 0.5) * 500;
@@ -996,33 +711,12 @@ const KiwiSmart3D = () => {
                 }
                 break;
         }
-
-        // Create sample terrain data for demonstration
-        const sampleTerrainData = {
-            width: 128,
-            height: 128,
-            data: new Float32Array(128 * 128),
-            bounds: { minX: -400, maxX: 400, minY: -400, maxY: 400 }
-        };
-
-        for (let i = 0; i < 128; i++) {
-            for (let j = 0; j < 128; j++) {
-                const x = (i / 128) * 4 - 2;
-                const y = (j / 128) * 4 - 2;
-                let elevation = 10 * Math.sin(x * 0.3) * Math.cos(y * 0.3);
-                elevation += 5 * Math.sin(x * 1.1) * Math.cos(y * 1.1);
-                elevation += (Math.random() - 0.5) * 2;
-                sampleTerrainData.data[i * 128 + j] = Math.max(elevation, -2);
-            }
-        }
-
-        setTerrainData(sampleTerrainData);
+        
         setLabelData(sampleData);
         setProjectData({
-            name: `Sample ${cityType} City with Terrain`,
+            name: `Sample ${cityType} City`,
             type: 'sample',
-            buildings: sampleData.length,
-            terrain: true
+            buildings: sampleData.length
         });
         setIsProjectOpen(true);
         setIs3DView(true);
@@ -1032,19 +726,19 @@ const KiwiSmart3D = () => {
         if (cameraRef.current && sceneRef.current) {
             const validBuildings = labelData.filter(b => b.bounds);
             if (validBuildings.length === 0) return;
-
+            
             const bounds = {
                 minX: Math.min(...validBuildings.map(b => b.bounds.x)),
                 maxX: Math.max(...validBuildings.map(b => b.bounds.x + b.bounds.width)),
                 minY: Math.min(...validBuildings.map(b => b.bounds.y)),
                 maxY: Math.max(...validBuildings.map(b => b.bounds.y + b.bounds.height))
             };
-
+            
             const centerX = (bounds.minX + bounds.maxX) / 2;
             const centerY = (bounds.minY + bounds.maxY) / 2;
             const sceneSize = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
             const initialDistance = sceneSize * 1.5;
-
+            
             cameraRef.current.position.set(
                 centerX + initialDistance * 0.8,
                 initialDistance * 0.6,
@@ -1097,7 +791,7 @@ const KiwiSmart3D = () => {
                                         <div className="alert alert-primary text-center mb-4">
                                             <div style={{ fontSize: '2rem' }}>☁️</div>
                                             <div className="mt-2">
-                                                {language === 'en' ? 'Drop your TIFF/3D city file here!' : '在此放置TIFF/3D城市檔案！'}
+                                                {language === 'en' ? 'Drop your 3D city file here!' : '在此放置3D城市檔案！'}
                                             </div>
                                         </div>
                                     )}
@@ -1109,7 +803,7 @@ const KiwiSmart3D = () => {
                                                 onClick={() => fileInputRef.current?.click()}
                                                 style={{ minHeight: '120px' }}
                                             >
-                                                <div style={{ fontSize: '2rem' }}>🗺️</div>
+                                                <div style={{ fontSize: '2rem' }}>📁</div>
                                                 <div className="mt-2">{t.uploadFile}</div>
                                                 <small className="mt-1 opacity-75">{t.supportedFormats}</small>
                                             </button>
@@ -1120,19 +814,19 @@ const KiwiSmart3D = () => {
                                                     className="btn btn-outline-primary flex-fill d-flex align-items-center justify-content-center"
                                                     onClick={() => loadSampleCity('downtown')}
                                                 >
-                                                    🏙️ {language === 'en' ? 'Downtown + Terrain' : '市中心+地形'}
+                                                    🏙️ {language === 'en' ? 'Downtown Sample' : '市中心範例'}
                                                 </button>
                                                 <button
                                                     className="btn btn-outline-success flex-fill d-flex align-items-center justify-content-center"
                                                     onClick={() => loadSampleCity('residential')}
                                                 >
-                                                    🏘️ {language === 'en' ? 'Residential + Hills' : '住宅區+丘陵'}
+                                                    🏘️ {language === 'en' ? 'Residential Sample' : '住宅區範例'}
                                                 </button>
                                                 <button
                                                     className="btn btn-outline-warning flex-fill d-flex align-items-center justify-content-center"
                                                     onClick={() => loadSampleCity('mixed')}
                                                 >
-                                                    🌄 {language === 'en' ? 'Mixed + Mountains' : '混合+山地'}
+                                                    🏢 {language === 'en' ? 'Mixed Use Sample' : '混合使用範例'}
                                                 </button>
                                             </div>
                                         </div>
@@ -1140,7 +834,7 @@ const KiwiSmart3D = () => {
 
                                     <div className="mt-4">
                                         <small className="text-muted d-block text-center">
-                                            {language === 'en' ? 'Drag & drop TIFF elevation files or choose from realistic sample cities' : '拖放TIFF高程檔案或選擇真實範例城市'}
+                                            {language === 'en' ? 'Drag & drop files or choose from sample cities' : '拖放檔案或選擇範例城市'}
                                         </small>
                                     </div>
                                 </div>
@@ -1154,7 +848,7 @@ const KiwiSmart3D = () => {
                 ref={fileInputRef}
                 type="file"
                 className="d-none"
-                accept=".json,.geojson,.kml,.gml,.cityjson,.tif,.tiff"
+                accept=".json,.geojson,.kml,.gml,.cityjson"
                 onChange={handleFileUpload}
             />
         </div>
@@ -1169,10 +863,9 @@ const KiwiSmart3D = () => {
                         <h6 className="text-light mb-0 me-3">{projectData?.name || 'KiwiSmart 3D'}</h6>
                         <span className="badge bg-info me-2">{labelData.length} {t.buildings}</span>
                         <span className="badge bg-success me-2">{roadData.length} {t.roads}</span>
-                        <span className="badge bg-warning me-2">{landscapeData.length} {t.landscape}</span>
-                        {terrainData && <span className="badge bg-secondary">✓ Terrain</span>}
+                        <span className="badge bg-warning">{landscapeData.length} {t.landscape}</span>
                     </div>
-
+                    
                     <div className="d-flex align-items-center">
                         <div className="btn-group me-3">
                             <button
@@ -1188,7 +881,7 @@ const KiwiSmart3D = () => {
                                 中
                             </button>
                         </div>
-                        <button
+                        <button 
                             className="btn btn-outline-light btn-sm"
                             onClick={() => setIsProjectOpen(false)}
                         >
@@ -1209,10 +902,10 @@ const KiwiSmart3D = () => {
                             onMouseDown={(e) => e.target.style.cursor = 'grabbing'}
                             onMouseUp={(e) => e.target.style.cursor = 'grab'}
                         />
-
-                        {/* Enhanced 3D Controls Panel */}
+                        
+                        {/* 3D Controls Panel */}
                         <div className="position-absolute top-0 start-0 m-3" style={{ zIndex: 1001 }}>
-                            <div className="card bg-dark text-white" style={{ opacity: 0.95, maxHeight: '80vh', overflowY: 'auto' }}>
+                            <div className="card bg-dark text-white" style={{ opacity: 0.95 }}>
                                 <div className="card-body p-3">
                                     <h6 className="mb-3">{t.visualizationMode}</h6>
                                     <div className="btn-group-vertical w-100 mb-3" role="group">
@@ -1235,7 +928,7 @@ const KiwiSmart3D = () => {
                                             📐 {t.wireframe}
                                         </button>
                                     </div>
-
+                                    
                                     <h6 className="mb-3">{t.lightingMode}</h6>
                                     <div className="btn-group-vertical w-100 mb-3" role="group">
                                         <button
@@ -1257,11 +950,11 @@ const KiwiSmart3D = () => {
                                             🌙 {t.night}
                                         </button>
                                     </div>
-
+                                    
                                     <div className="form-check form-switch mb-2">
-                                        <input
-                                            className="form-check-input"
-                                            type="checkbox"
+                                        <input 
+                                            className="form-check-input" 
+                                            type="checkbox" 
                                             id="showRoads"
                                             checked={showRoads}
                                             onChange={() => setShowRoads(!showRoads)}
@@ -1271,9 +964,9 @@ const KiwiSmart3D = () => {
                                         </label>
                                     </div>
                                     <div className="form-check form-switch mb-2">
-                                        <input
-                                            className="form-check-input"
-                                            type="checkbox"
+                                        <input 
+                                            className="form-check-input" 
+                                            type="checkbox" 
                                             id="showVegetation"
                                             checked={showVegetation}
                                             onChange={() => setShowVegetation(!showVegetation)}
@@ -1283,9 +976,9 @@ const KiwiSmart3D = () => {
                                         </label>
                                     </div>
                                     <div className="form-check form-switch mb-3">
-                                        <input
-                                            className="form-check-input"
-                                            type="checkbox"
+                                        <input 
+                                            className="form-check-input" 
+                                            type="checkbox" 
                                             id="showWater"
                                             checked={showWater}
                                             onChange={() => setShowWater(!showWater)}
@@ -1294,29 +987,22 @@ const KiwiSmart3D = () => {
                                             {t.showWater}
                                         </label>
                                     </div>
-
+                                    
                                     <button
-                                        className="btn btn-success btn-sm w-100 mb-2"
+                                        className="btn btn-success btn-sm w-100"
                                         onClick={resetCamera}
                                     >
                                         🔄 {t.resetView}
-                                    </button>
-
-                                    <button
-                                        className="btn btn-info btn-sm w-100"
-                                        onClick={() => fileInputRef.current?.click()}
-                                    >
-                                        📁 Load TIFF
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Enhanced Stats Panel */}
+                        {/* Stats Panel */}
                         <div className="position-absolute top-0 end-0 m-3" style={{ zIndex: 1001 }}>
                             <div className="card bg-dark text-white" style={{ opacity: 0.95 }}>
                                 <div className="card-body p-3">
-                                    <h6 className="mb-3">📊 Statistics</h6>
+                                    <h6 className="mb-3">Statistics</h6>
                                     <div className="small">
                                         <div className="d-flex justify-content-between mb-1">
                                             <span>🏠 Residential:</span>
@@ -1343,47 +1029,22 @@ const KiwiSmart3D = () => {
                                             </span>
                                         </div>
                                         <hr className="my-2" />
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🗺️ Terrain:</span>
-                                            <span className="badge bg-secondary">
-                                                {terrainData ? '✓ Active' : '✗ None'}
-                                            </span>
-                                        </div>
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🛣️ Roads:</span>
-                                            <span className="badge bg-dark">{roadData.length}</span>
-                                        </div>
                                         <div className="d-flex justify-content-between">
-                                            <span>Total Buildings:</span>
-                                            <span className="badge bg-light text-dark">{labelData.length}</span>
+                                            <span>Total:</span>
+                                            <span className="badge bg-secondary">{labelData.length}</span>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* File Format Info Panel */}
-                        <div className="position-absolute bottom-0 end-0 m-3" style={{ zIndex: 1000 }}>
-                            <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
-                                <div className="card-body p-2 px-3">
-                                    <h6 className="small mb-2">📁 Supported Formats</h6>
-                                    <div className="small">
-                                        <div className="mb-1">🗺️ <strong>TIFF/TIF:</strong> Elevation data</div>
-                                        <div className="mb-1">🌍 <strong>GeoJSON:</strong> Building data</div>
-                                        <div className="mb-1">🏙️ <strong>CityJSON:</strong> 3D city models</div>
-                                        <div>📍 <strong>KML:</strong> Geographic data</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Enhanced Instructions */}
+                        {/* Instructions */}
                         <div className="position-absolute bottom-0 start-0 end-0 p-3" style={{ zIndex: 1000 }}>
                             <div className="d-flex justify-content-center">
                                 <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
                                     <div className="card-body p-2 px-3">
                                         <small>
-                                            🖱️ {language === 'en' ? 'Drag to rotate • Scroll to zoom • Upload TIFF for realistic terrain • Use controls for customization' : '拖曳旋轉 • 滾輪縮放 • 上傳TIFF獲得真實地形 • 使用控制面板自訂'}
+                                            🖱️ {language === 'en' ? 'Drag to rotate • Scroll to zoom • Use controls to customize view' : '拖曳旋轉 • 滾輪縮放 • 使用控制面板自訂視圖'}
                                         </small>
                                     </div>
                                 </div>
@@ -1393,10 +1054,10 @@ const KiwiSmart3D = () => {
                 ) : (
                     <div className="h-100 d-flex align-items-center justify-content-center bg-light">
                         <div className="text-center">
-                            <div style={{ fontSize: '4rem' }}>🗺️</div>
+                            <div style={{ fontSize: '4rem' }}>🏙️</div>
                             <h4>2D View Not Available</h4>
-                            <p className="text-muted">This enhanced version focuses on 3D visualization with terrain support</p>
-                            <button
+                            <p className="text-muted">This enhanced version focuses on 3D visualization</p>
+                            <button 
                                 className="btn btn-primary"
                                 onClick={() => setIs3DView(true)}
                             >
@@ -1438,19 +1099,6 @@ const KiwiSmart3D = () => {
                     border-color: #0d6efd;
                 }
                 
-                .form-range {
-                    background: transparent;
-                }
-                
-                .form-range::-webkit-slider-track {
-                    background: #495057;
-                    border-radius: 3px;
-                }
-                
-                .form-range::-webkit-slider-thumb {
-                    background: #0d6efd;
-                }
-                
                 canvas {
                     outline: none;
                     user-select: none;
@@ -1471,7 +1119,6 @@ const KiwiSmart3D = () => {
                         left: 10px !important;
                         right: 10px !important;
                         z-index: 1002 !important;
-                        max-height: 50vh !important;
                     }
                     
                     .position-absolute.top-0.end-0 {
@@ -1479,10 +1126,6 @@ const KiwiSmart3D = () => {
                         top: 200px !important;
                         right: 10px !important;
                         z-index: 1002 !important;
-                    }
-                    
-                    .position-absolute.bottom-0.end-0 {
-                        display: none !important;
                     }
                 }
                 
@@ -1506,30 +1149,6 @@ const KiwiSmart3D = () => {
                 
                 .lighting-night {
                     filter: brightness(0.7) contrast(1.2) hue-rotate(240deg);
-                }
-                
-                /* Terrain visualization styles */
-                .terrain-realistic {
-                    background: linear-gradient(45deg, #4a5c3a, #6b8e47);
-                }
-                
-                /* Scrollbar styles for control panel */
-                .card-body::-webkit-scrollbar {
-                    width: 6px;
-                }
-                
-                .card-body::-webkit-scrollbar-track {
-                    background: rgba(255,255,255,0.1);
-                    border-radius: 3px;
-                }
-                
-                .card-body::-webkit-scrollbar-thumb {
-                    background: rgba(255,255,255,0.3);
-                    border-radius: 3px;
-                }
-                
-                .card-body::-webkit-scrollbar-thumb:hover {
-                    background: rgba(255,255,255,0.5);
                 }
             `}</style>
 
