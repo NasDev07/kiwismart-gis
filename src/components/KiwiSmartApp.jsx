@@ -1,496 +1,276 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as THREE from 'three';
-import GeoTIFF from 'geotiff';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
-const KiwiSmart3D = () => {
+const KiwiSmartApp = () => {
     const [isProjectOpen, setIsProjectOpen] = useState(false);
-    const [is3DView, setIs3DView] = useState(false);
+    const [fabExpanded, setFabExpanded] = useState(false);
     const [selectedTool, setSelectedTool] = useState('select');
+    const [sidebarPanel, setSidebarPanel] = useState(null);
+    const [isAutoLabeling, setIsAutoLabeling] = useState(false);
+    const [labelingProgress, setLabelingProgress] = useState(0);
     const [language, setLanguage] = useState('zh');
     const [uploadedFile, setUploadedFile] = useState(null);
     const [projectData, setProjectData] = useState(null);
-    const [zoomLevel, setZoomLevel] = useState(100);
+    const [mapBackground, setMapBackground] = useState(null);
+    const [imagePreview, setImagePreview] = useState(null);
     const [isDragOver, setIsDragOver] = useState(false);
-    const [visualizationMode, setVisualizationMode] = useState('realistic');
-    const [lightingMode, setLightingMode] = useState('day');
-    const [showRoads, setShowRoads] = useState(true);
-    const [showVegetation, setShowVegetation] = useState(true);
-    const [showWater, setShowWater] = useState(true);
-    const [showTerrain, setShowTerrain] = useState(true);
-    const [terrainData, setTerrainData] = useState(null);
-    const [elevationScale, setElevationScale] = useState(1.0);
-    const [terrainResolution, setTerrainResolution] = useState(256);
-
-    // Enhanced sample data for realistic urban visualization
-    const [labelData, setLabelData] = useState([
-        // Residential buildings
-        { id: 1, groupId: 'RES_001', buildingType: 'residential', bounds: { x: -200, y: -150, width: 40, height: 30, height3D: 45 }, floors: 15, material: 'concrete' },
-        { id: 2, groupId: 'RES_002', buildingType: 'residential', bounds: { x: -150, y: -120, width: 35, height: 25, height3D: 38 }, floors: 12, material: 'brick' },
-        { id: 3, groupId: 'RES_003', buildingType: 'residential', bounds: { x: -100, y: -140, width: 45, height: 35, height3D: 52 }, floors: 17, material: 'glass' },
-        { id: 4, groupId: 'RES_004', buildingType: 'residential', bounds: { x: -50, y: -110, width: 38, height: 28, height3D: 41 }, floors: 14, material: 'concrete' },
-
-        // Commercial/Office buildings
-        { id: 5, groupId: 'COM_001', buildingType: 'commercial', bounds: { x: 50, y: -100, width: 60, height: 40, height3D: 120 }, floors: 30, material: 'glass' },
-        { id: 6, groupId: 'COM_002', buildingType: 'commercial', bounds: { x: 120, y: -80, width: 55, height: 35, height3D: 95 }, floors: 24, material: 'glass' },
-        { id: 7, groupId: 'COM_003', buildingType: 'commercial', bounds: { x: 180, y: -60, width: 70, height: 50, height3D: 150 }, floors: 40, material: 'glass' },
-        { id: 8, groupId: 'COM_004', buildingType: 'commercial', bounds: { x: 260, y: -40, width: 65, height: 45, height3D: 135 }, floors: 35, material: 'glass' },
-
-        // Mixed-use and smaller buildings
-        { id: 9, groupId: 'MIX_001', buildingType: 'mixed', bounds: { x: -180, y: 50, width: 30, height: 20, height3D: 25 }, floors: 8, material: 'brick' },
-        { id: 10, groupId: 'MIX_002', buildingType: 'mixed', bounds: { x: -130, y: 70, width: 35, height: 25, height3D: 30 }, floors: 10, material: 'concrete' },
-        { id: 11, groupId: 'MIX_003', buildingType: 'mixed', bounds: { x: -80, y: 90, width: 40, height: 30, height3D: 35 }, floors: 12, material: 'glass' },
-
-        // Industrial/Warehouse
-        { id: 12, groupId: 'IND_001', buildingType: 'industrial', bounds: { x: 100, y: 100, width: 80, height: 60, height3D: 25 }, floors: 2, material: 'metal' },
-        { id: 13, groupId: 'IND_002', buildingType: 'industrial', bounds: { x: 200, y: 120, width: 90, height: 70, height3D: 30 }, floors: 3, material: 'metal' },
-
-        // Additional residential cluster
-        { id: 14, groupId: 'RES_005', buildingType: 'residential', bounds: { x: -50, y: 150, width: 25, height: 20, height3D: 20 }, floors: 6, material: 'brick' },
-        { id: 15, groupId: 'RES_006', buildingType: 'residential', bounds: { x: -20, y: 170, width: 28, height: 22, height3D: 22 }, floors: 7, material: 'brick' },
-        { id: 16, groupId: 'RES_007', buildingType: 'residential', bounds: { x: 10, y: 150, width: 30, height: 25, height3D: 25 }, floors: 8, material: 'concrete' }
+    const [activeDropdown, setActiveDropdown] = useState(null);
+    const [isFullScreen, setIsFullScreen] = useState(false);
+    const [zoomLevel, setZoomLevel] = useState(100);
+    const [showAboutModal, setShowAboutModal] = useState(false);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [saveAsName, setSaveAsName] = useState('');
+    const [activityLogs, setActivityLogs] = useState([
+        { id: 1, action: 'projectOpened', timestamp: '2024-08-02 14:30:00', type: 'info' },
+        { id: 2, action: 'aiLabelingCompleted', timestamp: '2024-08-02 14:25:00', type: 'success' }
     ]);
+    const [labelData, setLabelData] = useState([
+        { id: 1, groupId: 'GROUP_001', subGroupId: 'SUB_001', buildingType: 'residential', bounds: { x: 300, y: 200, width: 100, height: 60, height3D: 120 } },
+        { id: 2, groupId: 'GROUP_002', subGroupId: 'SUB_001', buildingType: 'commercial', bounds: { x: 500, y: 400, width: 120, height: 80, height3D: 180 } },
+        { id: 3, groupId: 'GROUP_003', subGroupId: 'SUB_002', buildingType: 'industrial', bounds: { x: 400, y: 300, width: 80, height: 50, height3D: 80 } },
+        { id: 4, groupId: 'GROUP_004', subGroupId: 'SUB_003', buildingType: 'residential', bounds: { x: 350, y: 350, width: 90, height: 70, height3D: 100 } },
+        { id: 5, groupId: 'GROUP_005', subGroupId: 'SUB_003', buildingType: 'commercial', bounds: { x: 450, y: 250, width: 110, height: 90, height3D: 200 } },
+        { id: 6, groupId: 'GROUP_006', subGroupId: 'SUB_004', buildingType: 'industrial', bounds: { x: 600, y: 350, width: 130, height: 100, height3D: 60 } }
+    ]);
+    const [drawingData, setDrawingData] = useState([]);
+    const [isDrawing, setIsDrawing] = useState(false);
+    const [currentPath, setCurrentPath] = useState([]);
+    const [drawingHistory, setDrawingHistory] = useState([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
+    const [showBuildingOutlines, setShowBuildingOutlines] = useState(false);
 
-    // Road network data
-    const roadData = [
-        // Main roads
-        { id: 'main_1', type: 'highway', points: [[-300, -200], [300, -200]], width: 12 },
-        { id: 'main_2', type: 'highway', points: [[-300, 200], [300, 200]], width: 12 },
-        { id: 'main_3', type: 'highway', points: [[-200, -300], [-200, 300]], width: 10 },
-        { id: 'main_4', type: 'highway', points: [[200, -300], [200, 300]], width: 10 },
-
-        // Secondary roads
-        { id: 'sec_1', type: 'street', points: [[-100, -300], [-100, 300]], width: 8 },
-        { id: 'sec_2', type: 'street', points: [[100, -300], [100, 300]], width: 8 },
-        { id: 'sec_3', type: 'street', points: [[-300, -100], [300, -100]], width: 8 },
-        { id: 'sec_4', type: 'street', points: [[-300, 100], [300, 100]], width: 8 },
-
-        // Local streets
-        { id: 'local_1', type: 'local', points: [[-50, -300], [-50, 300]], width: 6 },
-        { id: 'local_2', type: 'local', points: [[50, -300], [50, 300]], width: 6 },
-        { id: 'local_3', type: 'local', points: [[-300, -50], [300, -50]], width: 6 },
-        { id: 'local_4', type: 'local', points: [[-300, 50], [300, 50]], width: 6 }
-    ];
-
-    // Green spaces and water bodies
-    const landscapeData = [
-        { id: 'park_1', type: 'park', bounds: { x: -250, y: -50, width: 80, height: 60 } },
-        { id: 'park_2', type: 'park', bounds: { x: 150, y: 50, width: 70, height: 50 } },
-        { id: 'water_1', type: 'water', bounds: { x: -80, y: 0, width: 160, height: 40 } },
-        { id: 'trees_1', type: 'trees', bounds: { x: -300, y: -300, width: 600, height: 50 } },
-        { id: 'trees_2', type: 'trees', bounds: { x: -300, y: 250, width: 600, height: 50 } }
-    ];
-
+    const fileInputRef = useRef(null);
+    const [is3DView, setIs3DView] = useState(false);
     const canvasRef = useRef(null);
     const sceneRef = useRef(null);
     const cameraRef = useRef(null);
     const rendererRef = useRef(null);
     const controlsRef = useRef(null);
     const animationRef = useRef(null);
-    const fileInputRef = useRef(null);
+    const buildingMeshesRef = useRef([]);
+    const [cameraDistance, setCameraDistance] = useState(1000);
+    const [isMousePressed, setIsMousePressed] = useState(false);
+    const [mouseButton, setMouseButton] = useState(-1);
+    const lastMouseRef = useRef(new THREE.Vector2());
+
+    const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+    const [isPanning, setIsPanning] = useState(false);
+    const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
 
     // Translations
     const translations = {
         en: {
-            appTitle: 'KiwiSmart 3D',
-            appSubtitle: 'Advanced Urban Visualization System with TIFF Support',
+            appTitle: 'KiwiSmart',
+            appSubtitle: 'Intelligent Geographic Information System',
             newProject: 'Start New Project',
             openProject: 'Open Existing Project',
+            file: 'File',
+            edit: 'Edit',
+            view: 'View',
+            window: 'Window',
+            help: 'Help',
+            home: 'Home',
+            newProjectMenu: 'New Project',
+            openProjectMenu: 'Open Project',
+            save: 'Save',
+            saveAs: 'Save As',
+            newFile: 'New File',
+            closeProject: 'Close Project',
+            closeProgram: 'Close Program',
+            undo: 'Undo',
+            redo: 'Redo',
+            cut: 'Cut',
+            copy: 'Copy',
+            paste: 'Paste',
+            delete: 'Delete',
+            select: 'Select',
+            zoomIn: 'Zoom In',
+            zoomOut: 'Zoom Out',
+            fullScreen: 'Toggle Full Screen',
+            minimize: 'Minimize',
+            newWindow: 'New Window',
+            activityLogs: 'Activity Logs',
+            labelTable: 'Label Table',
+            about: 'About',
+            settings: 'Settings',
+            preferences: 'Preferences',
+            userManual: 'User Manual',
+            selectTool: 'Select Tool',
+            autoLabel: 'Auto Label (AI)',
+            manualLabel: 'Manual Label',
+            deleteLabel: 'Delete Label',
+            activityLog: 'Activity Log',
+            labelTableSidebar: 'Label Table',
+            filters: 'Filters',
+            autoLabelingInProgress: 'Automating building labeling...',
+            buildingsLabeled: 'buildings labeled',
+            abort: 'Abort',
+            backToHome: 'Back to Home',
+            saveProgress: 'Save Progress',
+            exportLabels: 'Export Labels',
+            satelliteMapView: 'Satellite Map View',
+            groupId: 'Group ID',
+            subGroupId: 'Sub Group ID',
+            buildingType: 'Building Type',
+            all: 'All',
+            residential: 'Residential',
+            commercial: 'Commercial',
+            industrial: 'Industrial',
+            projectOpened: 'Project Opened',
+            aiLabelingCompleted: 'AI Labeling Completed',
+            uploadFile: 'Upload File',
+            selectFile: 'Select File',
+            supportedFormats: 'Supported formats: GeoTIFF, Images (JPG, PNG)',
+            fileUploaded: 'File uploaded successfully',
+            processing: 'Processing...',
+            aboutTitle: 'About KiwiSmart',
+            aboutContent: 'KiwiSmart is an intelligent GIS application for building labeling and analysis.',
+            version: 'Version 1.0.0',
+            close: 'Close',
+            settingsTitle: 'Settings',
+            theme: 'Theme',
+            languageLabel: 'Language',
+            autoSave: 'Auto Save',
+            enabled: 'Enabled',
+            disabled: 'Disabled',
+            imageUploaded: 'Image uploaded successfully',
+            fileProcessed: 'File processed successfully',
+            projectSaved: 'Project saved successfully',
+            projectSavedAs: 'Project saved as',
+            enterFileName: 'Enter file name',
+            fileName: 'File Name',
+            cancel: 'Cancel',
+            saveAsTitle: 'Save Project As',
+            undoAction: 'Undo last action',
+            redoAction: 'Redo last action',
+            cutSelection: 'Cut selection',
+            copySelection: 'Copy selection',
+            pasteSelection: 'Paste selection',
+            deleteSelection: 'Delete selection',
+            manualDrawingAdded: 'Manual drawing added',
+            allDrawingsDeleted: 'All drawings deleted',
+            buildingOutlinesToggled: 'Building outlines toggled',
             toggle3D: 'Toggle 3D View',
-            resetView: 'Reset View',
-            visualizationMode: 'Visualization Mode',
-            realistic: 'Realistic',
-            colorCoded: 'Color Coded',
-            wireframe: 'Wireframe',
-            lightingMode: 'Lighting',
-            day: 'Day',
-            sunset: 'Sunset',
-            night: 'Night',
-            showRoads: 'Show Roads',
-            showVegetation: 'Show Vegetation',
-            showWater: 'Show Water Bodies',
-            showTerrain: 'Show Terrain',
-            uploadFile: 'Upload 3D City Data',
-            supportedFormats: 'Supported: GeoJSON, CityJSON, KML, TIFF, 3D Models',
-            buildings: 'Buildings',
-            roads: 'Roads',
-            landscape: 'Landscape',
-            elevationScale: 'Elevation Scale',
-            terrainResolution: 'Terrain Resolution'
+            resetCamera: 'Reset Camera',
+            wireframe: 'Wireframe Mode',
+            resetView: 'Reset View'
         },
         zh: {
-            appTitle: 'KiwiSmart 3D',
-            appSubtitle: '支援TIFF格式的先進城市視覺化系統',
+            appTitle: 'KiwiSmart',
+            appSubtitle: '智慧型地理資訊系統',
             newProject: '開始新專案',
             openProject: '開啟現有專案',
+            file: '檔案',
+            edit: '編輯',
+            view: '檢視',
+            window: '視窗',
+            help: '說明',
+            home: '首頁',
+            newProjectMenu: '新專案',
+            openProjectMenu: '開啟專案',
+            save: '儲存',
+            saveAs: '另存新檔',
+            newFile: '新檔案',
+            closeProject: '關閉專案',
+            closeProgram: '關閉程式',
+            undo: '復原',
+            redo: '重做',
+            cut: '剪下',
+            copy: '複製',
+            paste: '貼上',
+            delete: '刪除',
+            select: '選取',
+            zoomIn: '放大',
+            zoomOut: '縮小',
+            fullScreen: '切換全螢幕',
+            minimize: '最小化',
+            newWindow: '新視窗',
+            activityLogs: '活動記錄',
+            labelTable: '標籤表格',
+            about: '關於',
+            settings: '設定',
+            preferences: '偏好設定',
+            userManual: '使用手冊',
+            selectTool: '選擇工具',
+            autoLabel: '自動標籤',
+            manualLabel: '手動標籤',
+            deleteLabel: '刪除標籤',
+            activityLog: '活動記錄',
+            labelTableSidebar: '標籤表格',
+            filters: '篩選器',
+            autoLabelingInProgress: '自動建築物標籤中...',
+            buildingsLabeled: '建築物已標籤',
+            abort: '中止',
+            backToHome: '返回首頁',
+            saveProgress: '儲存進度',
+            exportLabels: '匯出標籤',
+            satelliteMapView: '衛星地圖視圖',
+            groupId: '群組 ID',
+            subGroupId: '子群組 ID',
+            buildingType: '建築類型',
+            all: '全部',
+            residential: '住宅',
+            commercial: '商業',
+            industrial: '工業',
+            projectOpened: '專案已開啟',
+            aiLabelingCompleted: 'AI 標籤完成',
+            uploadFile: '上傳檔案',
+            selectFile: '選擇檔案',
+            supportedFormats: '支援格式：Shapefile、GeoJSON、GPKG、GeoTIFF、圖片 (JPG, PNG)',
+            fileUploaded: '檔案上傳成功',
+            processing: '處理中...',
+            aboutTitle: '關於 KiwiSmart',
+            aboutContent: 'KiwiSmart 是一個智慧型 GIS 應用程式，用於建築物標籤和分析。',
+            version: '版本 1.0.0',
+            close: '關閉',
+            settingsTitle: '設定',
+            theme: '主題',
+            languageLabel: '語言',
+            autoSave: '自動儲存',
+            enabled: '啟用',
+            disabled: '停用',
+            imageUploaded: '圖片上傳成功',
+            fileProcessed: '檔案處理完成',
+            projectSaved: '專案儲存成功',
+            projectSavedAs: '專案另存為',
+            enterFileName: '輸入檔案名稱',
+            fileName: '檔案名稱',
+            cancel: '取消',
+            saveAsTitle: '專案另存新檔',
+            undoAction: '復原上一步操作',
+            redoAction: '重做上一步操作',
+            cutSelection: '剪下選取項目',
+            copySelection: '複製選取項目',
+            pasteSelection: '貼上選取項目',
+            deleteSelection: '刪除選取項目',
+            manualDrawingAdded: '手動繪圖已添加',
+            allDrawingsDeleted: '所有繪圖已刪除',
+            buildingOutlinesToggled: '建築物輪廓已切換',
             toggle3D: '切換 3D 視圖',
-            resetView: '重設視圖',
-            visualizationMode: '視覺化模式',
-            realistic: '真實',
-            colorCoded: '色彩編碼',
-            wireframe: '線框',
-            lightingMode: '燈光',
-            day: '白天',
-            sunset: '黃昏',
-            night: '夜晚',
-            showRoads: '顯示道路',
-            showVegetation: '顯示植被',
-            showWater: '顯示水體',
-            showTerrain: '顯示地形',
-            uploadFile: '上傳 3D 城市資料',
-            supportedFormats: '支援格式：GeoJSON、CityJSON、KML、TIFF、3D 模型',
-            buildings: '建築物',
-            roads: '道路',
-            landscape: '景觀',
-            elevationScale: '高程比例',
-            terrainResolution: '地形解析度'
+            resetCamera: '重設相機',
+            wireframe: '線框模式',
+            resetView: '重設視圖'
         }
     };
 
     const t = translations[language];
 
-    // Function to read TIFF files and create terrain
-    const readTIFFFile = async (file) => {
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
-            const image = await tiff.getImage();
+    const fabTools = [
+        { id: 'select', icon: '🖱️', label: t.selectTool },
+        { id: 'ai', icon: '🤖', label: t.autoLabel },
+        { id: 'manual', icon: '✏️', label: t.manualLabel },
+        { id: 'delete', icon: '🗑️', label: t.deleteLabel },
+        { id: 'undo', icon: '↶', label: t.undo },
+        { id: 'redo', icon: '↷', label: t.redo },
+        // { id: '3d', icon: '📐', label: t.toggle3D },
+        { id: 'reset', icon: '🔄', label: t.resetView }
+    ];
 
-            const raster = await image.readRasters({ interleave: true });
-            const width = image.getWidth();
-            const height = image.getHeight();
-
-            const bbox = image.getBoundingBox(); // [minX, minY, maxX, maxY] dalam koordinat geospasial
-            const elevationData = raster[0]; // jika channel pertama adalah elevasi
-
-            return {
-                width,
-                height,
-                data: elevationData,
-                bounds: {
-                    minX: bbox[0],
-                    maxX: bbox[2],
-                    minY: bbox[1],
-                    maxY: bbox[3]
-                },
-                synthetic: false
-            };
-        } catch (error) {
-            console.error("TIFF read error:", error);
-            return createSyntheticTerrain(file.name);
-        }
-    };
-
-
-    // Create synthetic terrain data when TIFF parsing fails
-    const createSyntheticTerrain = (fileName, arrayBuffer = null) => {
-        console.log('Creating synthetic terrain for:', fileName);
-
-        const width = Math.min(terrainResolution, 512); // Limit resolution for performance
-        const height = Math.min(terrainResolution, 512);
-        const elevationData = new Float32Array(width * height);
-
-        // Create different terrain patterns based on filename
-        const fileNameLower = fileName.toLowerCase();
-        let terrainType = 'hills';
-
-        if (fileNameLower.includes('mountain') || fileNameLower.includes('peak')) {
-            terrainType = 'mountains';
-        } else if (fileNameLower.includes('valley') || fileNameLower.includes('river')) {
-            terrainType = 'valley';
-        } else if (fileNameLower.includes('flat') || fileNameLower.includes('plain')) {
-            terrainType = 'flat';
-        }
-
-        // Generate terrain based on type
-        for (let i = 0; i < width; i++) {
-            for (let j = 0; j < height; j++) {
-                const x = (i / width) * 6 - 3; // Extend range for more variation
-                const y = (j / height) * 6 - 3;
-
-                let elevation = 0;
-
-                switch (terrainType) {
-                    case 'mountains':
-                        elevation += 50 * Math.sin(x * 0.3) * Math.cos(y * 0.3);
-                        elevation += 30 * Math.sin(x * 0.8) * Math.cos(y * 0.8);
-                        elevation += 15 * Math.sin(x * 1.5) * Math.cos(y * 1.5);
-                        elevation += 20 * Math.cos(x * 0.5 + y * 0.5);
-                        break;
-                    case 'valley':
-                        elevation += -20 + 30 * Math.exp(-(x * x + y * y) * 0.3);
-                        elevation += 10 * Math.sin(x * 1.2) * Math.cos(y * 1.2);
-                        elevation += 5 * Math.sin(x * 2.0) * Math.cos(y * 2.0);
-                        break;
-                    case 'flat':
-                        elevation += 2 * Math.sin(x * 0.8) * Math.cos(y * 0.8);
-                        elevation += 1 * Math.sin(x * 2.0) * Math.cos(y * 2.0);
-                        break;
-                    default: // hills
-                        elevation += 25 * Math.sin(x * 0.5) * Math.cos(y * 0.5);
-                        elevation += 15 * Math.sin(x * 1.2) * Math.cos(y * 1.2);
-                        elevation += 8 * Math.sin(x * 2.5) * Math.cos(y * 2.5);
-                        elevation += 12 * Math.cos(x * 0.8 + y * 0.8);
-                        break;
-                }
-
-                // Add noise for realism
-                elevation += (Math.random() - 0.5) * 4;
-
-                // Ensure reasonable elevation range
-                elevation = Math.max(elevation, -10);
-                elevation = Math.min(elevation, 100);
-
-                elevationData[i * height + j] = elevation;
-            }
-        }
-
-        return {
-            width: width,
-            height: height,
-            data: elevationData,
-            bounds: { minX: -400, maxX: 400, minY: -400, maxY: 400 },
-            synthetic: true,
-            terrainType: terrainType
-        };
-    };
-
-    // Create realistic terrain from elevation data
-    const createTerrain = (terrainData) => {
-        const { width, height, data, bounds } = terrainData;
-        const geometry = new THREE.PlaneGeometry(
-            bounds.maxX - bounds.minX,
-            bounds.maxY - bounds.minY,
-            width - 1,
-            height - 1
-        );
-
-        const vertices = geometry.attributes.position.array;
-        for (let i = 0; i < data.length; i++) {
-            vertices[i * 3 + 2] = data[i] * elevationScale; // apply elevasi asli
-        }
-
-        geometry.computeVertexNormals();
-        const material = new THREE.MeshStandardMaterial({ color: 0x888866, wireframe: false });
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        return mesh;
-    };
-
-
-    // Enhanced material creation based on building type and visualization mode
-    const createBuildingMaterial = (building, mode) => {
-        const { buildingType, material, floors } = building;
-
-        if (mode === 'wireframe') {
-            return new THREE.MeshBasicMaterial({
-                color: 0x00ff00,
-                wireframe: true,
-                transparent: true,
-                opacity: 0.8
-            });
-        }
-
-        if (mode === 'colorCoded') {
-            const colors = {
-                residential: 0x4CAF50,
-                commercial: 0x2196F3,
-                industrial: 0xFF9800,
-                mixed: 0x9C27B0
-            };
-            return new THREE.MeshLambertMaterial({
-                color: colors[buildingType] || 0x9E9E9E,
-                transparent: true,
-                opacity: 0.9
-            });
-        }
-
-        // Realistic mode with enhanced materials
-        let baseColor, roughness, metalness, emissive;
-
-        switch (material) {
-            case 'glass':
-                baseColor = new THREE.Color(0.7, 0.8, 0.9);
-                roughness = 0.05;
-                metalness = 0.1;
-                emissive = new THREE.Color(0.05, 0.05, 0.1);
-                break;
-            case 'concrete':
-                baseColor = new THREE.Color(0.6, 0.6, 0.6);
-                roughness = 0.9;
-                metalness = 0.0;
-                emissive = new THREE.Color(0, 0, 0);
-                break;
-            case 'brick':
-                baseColor = new THREE.Color(0.7, 0.4, 0.3);
-                roughness = 0.95;
-                metalness = 0.0;
-                emissive = new THREE.Color(0, 0, 0);
-                break;
-            case 'metal':
-                baseColor = new THREE.Color(0.5, 0.5, 0.6);
-                roughness = 0.2;
-                metalness = 0.9;
-                emissive = new THREE.Color(0, 0, 0);
-                break;
-            default:
-                baseColor = new THREE.Color(0.7, 0.7, 0.7);
-                roughness = 0.7;
-                metalness = 0.0;
-                emissive = new THREE.Color(0, 0, 0);
-        }
-
-        // Vary color slightly based on height/floors for more realism
-        const heightVariation = Math.min(floors / 50, 0.3);
-        baseColor.multiplyScalar(1 - heightVariation * 0.15);
-
-        // Add subtle lighting at night
-        if (lightingMode === 'night' && Math.random() > 0.3) {
-            emissive = new THREE.Color(0.1, 0.08, 0.05);
-        }
-
-        return new THREE.MeshStandardMaterial({
-            color: baseColor,
-            roughness: roughness,
-            metalness: metalness,
-            emissive: emissive,
-            transparent: material === 'glass',
-            opacity: material === 'glass' ? 0.7 : 1.0
-        });
-    };
-
-    // Create road geometry with realistic appearance
-    const createRoadGeometry = (road) => {
-        const points = road.points.map(p => new THREE.Vector2(p[0], p[1]));
-        const width = road.width;
-        const length = Math.sqrt(
-            Math.pow(points[1].x - points[0].x, 2) +
-            Math.pow(points[1].y - points[0].y, 2)
-        );
-
-        const geometry = new THREE.PlaneGeometry(width, length);
-        return geometry;
-    };
-
-    // Create landscape elements with better materials
-    const createLandscapeElement = (element) => {
-        const { type, bounds } = element;
-        const geometry = new THREE.PlaneGeometry(bounds.width, bounds.height);
-        let material;
-
-        switch (type) {
-            case 'park':
-                material = new THREE.MeshLambertMaterial({
-                    color: 0x4CAF50,
-                    transparent: true,
-                    opacity: 0.8
-                });
-                break;
-            case 'water':
-                material = new THREE.MeshStandardMaterial({
-                    color: 0x1976D2,
-                    transparent: true,
-                    opacity: 0.85,
-                    roughness: 0.0,
-                    metalness: 0.0
-                });
-                break;
-            case 'trees':
-                material = new THREE.MeshLambertMaterial({
-                    color: 0x2E7D32,
-                    transparent: true,
-                    opacity: 0.7
-                });
-                break;
-            default:
-                material = new THREE.MeshLambertMaterial({ color: 0x8BC34A });
-        }
-
-        const mesh = new THREE.Mesh(geometry, material);
-        mesh.rotation.x = -Math.PI / 2;
-        mesh.position.set(bounds.x + bounds.width / 2, 1, bounds.y + bounds.height / 2);
-        mesh.receiveShadow = true;
-
-        return mesh;
-    };
-
-    // Enhanced lighting setup
-    const setupLighting = (scene, mode) => {
-        // Clear existing lights
-        const lights = scene.children.filter(child => child.isLight);
-        lights.forEach(light => scene.remove(light));
-
-        let ambientIntensity, directionalColor, directionalIntensity, directionalPosition;
-
-        switch (mode) {
-            case 'day':
-                ambientIntensity = 0.5;
-                directionalColor = 0xffffff;
-                directionalIntensity = 1.2;
-                directionalPosition = [1000, 2000, 1000];
-                scene.background = new THREE.Color(0x87CEEB);
-                scene.fog = new THREE.Fog(0x87CEEB, 1000, 5000);
-                break;
-            case 'sunset':
-                ambientIntensity = 0.3;
-                directionalColor = 0xffa500;
-                directionalIntensity = 0.9;
-                directionalPosition = [2000, 500, 1000];
-                scene.background = new THREE.Color(0xFF6B35);
-                scene.fog = new THREE.Fog(0xFF6B35, 800, 4000);
-                break;
-            case 'night':
-                ambientIntensity = 0.15;
-                directionalColor = 0x4169E1;
-                directionalIntensity = 0.4;
-                directionalPosition = [500, 1000, 500];
-                scene.background = new THREE.Color(0x191970);
-                scene.fog = new THREE.Fog(0x191970, 500, 3000);
-                break;
-        }
-
-        // Ambient light
-        const ambientLight = new THREE.AmbientLight(0x404040, ambientIntensity);
-        scene.add(ambientLight);
-
-        // Directional light (sun/moon)
-        const directionalLight = new THREE.DirectionalLight(directionalColor, directionalIntensity);
-        directionalLight.position.set(...directionalPosition);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 4096;
-        directionalLight.shadow.mapSize.height = 4096;
-        directionalLight.shadow.camera.near = 0.1;
-        directionalLight.shadow.camera.far = 5000;
-        directionalLight.shadow.camera.left = -1000;
-        directionalLight.shadow.camera.right = 1000;
-        directionalLight.shadow.camera.top = 1000;
-        directionalLight.shadow.camera.bottom = -1000;
-        scene.add(directionalLight);
-
-        // Hemisphere light for more natural lighting
-        const hemisphereLight = new THREE.HemisphereLight(
-            mode === 'night' ? 0x080820 : 0x87CEEB,
-            mode === 'night' ? 0x080808 : 0x8B4513,
-            0.3
-        );
-        scene.add(hemisphereLight);
-
-        // Add point lights for night mode (street lighting effect)
-        if (mode === 'night') {
-            for (let i = 0; i < 10; i++) {
-                const pointLight = new THREE.PointLight(0xffffff, 0.5, 100);
-                pointLight.position.set(
-                    (Math.random() - 0.5) * 400,
-                    20,
-                    (Math.random() - 0.5) * 400
-                );
-                scene.add(pointLight);
-            }
-        }
-    };
-
-    // Enhanced Three.js setup
+    // Enhanced Three.js Setup with improved controls
     useEffect(() => {
-        if (is3DView && canvasRef.current) {
+        if (is3DView && canvasRef.current && labelData.length > 0) {
             // Clean up previous scene
             if (animationRef.current) {
                 cancelAnimationFrame(animationRef.current);
@@ -501,256 +281,148 @@ const KiwiSmart3D = () => {
 
             // Initialize Scene
             sceneRef.current = new THREE.Scene();
+            sceneRef.current.background = new THREE.Color(0x87CEEB);
 
-            // Calculate scene bounds
-            const validBuildings = labelData.filter(b => b.bounds);
-            if (validBuildings.length === 0) return;
+            // Calculate center point of all buildings
+            const validBuildings = labelData.filter(b => b.bounds && typeof b.bounds.x === 'number' && typeof b.bounds.y === 'number');
 
-            const bounds = {
-                minX: Math.min(...validBuildings.map(b => b.bounds.x)),
-                maxX: Math.max(...validBuildings.map(b => b.bounds.x + b.bounds.width)),
-                minY: Math.min(...validBuildings.map(b => b.bounds.y)),
-                maxY: Math.max(...validBuildings.map(b => b.bounds.y + b.bounds.height))
-            };
+            if (validBuildings.length === 0) {
+                console.warn('No valid buildings found for 3D rendering');
+                return;
+            }
 
-            const centerX = (bounds.minX + bounds.maxX) / 2;
-            const centerY = (bounds.minY + bounds.maxY) / 2;
-            const sceneSize = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+            const centerX = validBuildings.reduce((sum, b) => sum + (b.bounds.x + (b.bounds.width || 0) / 2), 0) / validBuildings.length;
+            const centerY = validBuildings.reduce((sum, b) => sum + (b.bounds.y + (b.bounds.height || 0) / 2), 0) / validBuildings.length;
 
             // Initialize Camera
             const aspect = canvasRef.current.clientWidth / canvasRef.current.clientHeight;
-            cameraRef.current = new THREE.PerspectiveCamera(60, aspect, 1, sceneSize * 10);
+            cameraRef.current = new THREE.PerspectiveCamera(75, aspect, 0.1, 50000);
 
-            const initialDistance = sceneSize * 1.5;
-            cameraRef.current.position.set(
-                centerX + initialDistance * 0.8,
-                initialDistance * 0.6,
-                centerY + initialDistance * 0.8
+            const maxDistance = Math.max(
+                ...validBuildings.map(b => Math.sqrt(Math.pow(b.bounds.x - centerX, 2) + Math.pow(b.bounds.y - centerY, 2)))
             );
+            const initialDistance = Math.max(maxDistance * 3, 1000);
+            setCameraDistance(initialDistance);
+
+            cameraRef.current.position.set(centerX + initialDistance * 0.7, initialDistance * 0.8, centerY + initialDistance * 0.7);
             cameraRef.current.lookAt(centerX, 0, centerY);
 
-            // Initialize Renderer with enhanced settings
+            // Initialize Renderer
             rendererRef.current = new THREE.WebGLRenderer({
                 canvas: canvasRef.current,
                 antialias: true,
                 alpha: true
             });
             rendererRef.current.setSize(canvasRef.current.clientWidth, canvasRef.current.clientHeight);
-            rendererRef.current.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            rendererRef.current.setPixelRatio(window.devicePixelRatio);
             rendererRef.current.shadowMap.enabled = true;
             rendererRef.current.shadowMap.type = THREE.PCFSoftShadowMap;
-            rendererRef.current.toneMapping = THREE.ACESFilmicToneMapping;
-            rendererRef.current.toneMappingExposure = 1.0;
-            rendererRef.current.outputEncoding = THREE.sRGBEncoding;
 
-            // Enhanced mouse controls
-            const handleMouseMove = (event) => {
-                if (event.buttons === 1) {
-                    const deltaX = event.movementX * 0.01;
-                    const deltaY = event.movementY * 0.01;
+            // Use standard OrbitControls
+            controlsRef.current = new OrbitControls(cameraRef.current, canvasRef.current);
+            controlsRef.current.target.set(centerX, 0, centerY);
+            controlsRef.current.enableDamping = true;
+            controlsRef.current.dampingFactor = 0.05;
+            controlsRef.current.minDistance = 50;
+            controlsRef.current.maxDistance = initialDistance * 3;
+            controlsRef.current.enablePan = true;
+            controlsRef.current.rotateSpeed = 1.0;
+            controlsRef.current.zoomSpeed = 1.0;
+            controlsRef.current.panSpeed = 1.0;
+            controlsRef.current.minPolarAngle = 0.1;
+            controlsRef.current.maxPolarAngle = Math.PI - 0.1;
+            controlsRef.current.update();
 
-                    const spherical = new THREE.Spherical();
-                    spherical.setFromVector3(cameraRef.current.position.clone().sub(new THREE.Vector3(centerX, 0, centerY)));
-                    spherical.theta -= deltaX;
-                    spherical.phi += deltaY;
-                    spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi));
+            // Enhanced Ground and Grid
+            const groundSize = Math.max(maxDistance * 4, 2000);
+            const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 50, 50);
+            const groundMaterial = new THREE.MeshLambertMaterial({
+                color: 0x90EE90,
+                transparent: true,
+                opacity: 0.6
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.set(centerX, -5, centerY);
+            ground.receiveShadow = true;
+            sceneRef.current.add(ground);
 
-                    const newPosition = new THREE.Vector3().setFromSpherical(spherical).add(new THREE.Vector3(centerX, 0, centerY));
-                    cameraRef.current.position.copy(newPosition);
-                    cameraRef.current.lookAt(centerX, 0, centerY);
-                }
-            };
+            const gridHelper = new THREE.GridHelper(groundSize, Math.min(100, groundSize / 50), 0x888888, 0xcccccc);
+            gridHelper.position.set(centerX, 0, centerY);
+            sceneRef.current.add(gridHelper);
 
-            const handleWheel = (event) => {
-                const scale = event.deltaY > 0 ? 1.1 : 0.9;
-                const direction = cameraRef.current.position.clone().sub(new THREE.Vector3(centerX, 0, centerY));
-                direction.multiplyScalar(scale);
-                cameraRef.current.position.copy(direction.add(new THREE.Vector3(centerX, 0, centerY)));
-            };
+            // Clear previous building meshes
+            buildingMeshesRef.current = [];
 
-            canvasRef.current.addEventListener('mousemove', handleMouseMove);
-            canvasRef.current.addEventListener('wheel', handleWheel);
-
-            // Setup lighting
-            setupLighting(sceneRef.current, lightingMode);
-
-            // Create terrain
-            if (showTerrain && terrainData) {
-                const terrain = createTerrain(terrainData);
-                if (terrain) {
-                    sceneRef.current.add(terrain);
-                }
-            } else if (showTerrain) {
-                // Create default ground with some elevation variation
-                const groundSize = sceneSize * 2;
-                const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize, 100, 100);
-
-                // Add slight elevation variation to ground
-                const vertices = groundGeometry.attributes.position.array;
-                for (let i = 0; i < vertices.length; i += 3) {
-                    vertices[i + 2] = (Math.random() - 0.5) * 5; // Z coordinate
-                }
-                groundGeometry.computeVertexNormals();
-
-                const groundMaterial = new THREE.MeshStandardMaterial({
-                    color: 0x5d7c47,
-                    roughness: 0.8,
-                    metalness: 0.0
-                });
-
-                const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-                ground.rotation.x = -Math.PI / 2;
-                ground.position.set(centerX, -2, centerY);
-                ground.receiveShadow = true;
-                sceneRef.current.add(ground);
-            }
-
-            // Create roads with realistic materials
-            if (showRoads) {
-                roadData.forEach(road => {
-                    const roadGeometry = createRoadGeometry(road);
-                    const roadMaterial = new THREE.MeshStandardMaterial({
-                        color: road.type === 'highway' ? 0x2C2C2C : 0x404040,
-                        roughness: 0.7,
-                        metalness: 0.1
-                    });
-                    const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-                    roadMesh.rotation.x = -Math.PI / 2;
-                    roadMesh.position.set(
-                        (road.points[0][0] + road.points[1][0]) / 2,
-                        0.5,
-                        (road.points[0][1] + road.points[1][1]) / 2
-                    );
-                    roadMesh.receiveShadow = true;
-                    sceneRef.current.add(roadMesh);
-
-                    // Add road markings
-                    if (road.type !== 'local') {
-                        const markingGeometry = new THREE.PlaneGeometry(
-                            road.width * 0.1,
-                            Math.abs(road.points[1][1] - road.points[0][1]) || Math.abs(road.points[1][0] - road.points[0][0])
-                        );
-                        const markingMaterial = new THREE.MeshBasicMaterial({
-                            color: 0xFFFFFF,
-                            transparent: true,
-                            opacity: 0.8
-                        });
-                        const markingMesh = new THREE.Mesh(markingGeometry, markingMaterial);
-                        markingMesh.rotation.x = -Math.PI / 2;
-                        markingMesh.position.set(
-                            (road.points[0][0] + road.points[1][0]) / 2,
-                            0.6,
-                            (road.points[0][1] + road.points[1][1]) / 2
-                        );
-                        sceneRef.current.add(markingMesh);
-                    }
-                });
-            }
-
-            // Create landscape elements
-            if (showVegetation || showWater) {
-                landscapeData.forEach(element => {
-                    if ((element.type === 'park' || element.type === 'trees') && showVegetation) {
-                        const landscapeElement = createLandscapeElement(element);
-                        sceneRef.current.add(landscapeElement);
-
-                        // Add trees for parks
-                        if (element.type === 'park') {
-                            const treeCount = Math.floor((element.bounds.width * element.bounds.height) / 200);
-                            for (let i = 0; i < treeCount; i++) {
-                                const treeGeometry = new THREE.ConeGeometry(2, 8, 8);
-                                const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
-                                const tree = new THREE.Mesh(treeGeometry, treeMaterial);
-
-                                const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 3);
-                                const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-                                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-                                trunk.position.y = -2.5;
-                                tree.add(trunk);
-
-                                tree.position.set(
-                                    element.bounds.x + Math.random() * element.bounds.width,
-                                    4,
-                                    element.bounds.y + Math.random() * element.bounds.height
-                                );
-                                tree.castShadow = true;
-                                sceneRef.current.add(tree);
-                            }
-                        }
-                    } else if (element.type === 'water' && showWater) {
-                        const landscapeElement = createLandscapeElement(element);
-                        sceneRef.current.add(landscapeElement);
-                    }
-                });
-            }
-
-            // Create buildings with enhanced details
-            validBuildings.forEach((building) => {
-                const width = Math.max(building.bounds.width, 5);
-                const depth = Math.max(building.bounds.height, 5);
-                const height = Math.max(building.bounds.height3D, 5);
+            // Create enhanced 3D buildings
+            validBuildings.forEach((building, index) => {
+                const width = Math.max(building.bounds.width || 20, 10);
+                const depth = Math.max(building.bounds.height || 20, 10);
+                const height = Math.max(building.bounds.height3D || 30, 5);
 
                 const geometry = new THREE.BoxGeometry(width, height, depth);
-                const material = createBuildingMaterial(building, visualizationMode);
+
+                let material;
+                const buildingTypeNormalized = (building.buildingType || 'residential').toLowerCase();
+
+                if (buildingTypeNormalized.includes('residential')) {
+                    material = new THREE.MeshLambertMaterial({ color: 0x4CAF50 });
+                } else if (buildingTypeNormalized.includes('commercial')) {
+                    material = new THREE.MeshLambertMaterial({ color: 0x2196F3 });
+                } else if (buildingTypeNormalized.includes('industrial')) {
+                    material = new THREE.MeshLambertMaterial({ color: 0xFF9800 });
+                } else {
+                    material = new THREE.MeshLambertMaterial({ color: 0x9E9E9E });
+                }
 
                 const buildingMesh = new THREE.Mesh(geometry, material);
-                buildingMesh.position.set(
-                    building.bounds.x + width / 2,
-                    height / 2,
-                    building.bounds.y + depth / 2
-                );
+                buildingMesh.position.set(building.bounds.x, height / 2, building.bounds.y);
                 buildingMesh.castShadow = true;
                 buildingMesh.receiveShadow = true;
-                buildingMesh.userData = { building };
+                buildingMesh.userData = { building, index };
 
                 sceneRef.current.add(buildingMesh);
+                buildingMeshesRef.current.push(buildingMesh);
 
-                // Add building details
-                if (visualizationMode === 'realistic') {
-                    // Add windows
-                    const windowCount = Math.floor(building.floors / 2);
-                    for (let i = 0; i < windowCount; i++) {
-                        const windowGeometry = new THREE.PlaneGeometry(width * 0.8, 2);
-                        const windowMaterial = new THREE.MeshBasicMaterial({
-                            color: lightingMode === 'night' ? 0xFFFF99 : 0x87CEEB,
-                            transparent: true,
-                            opacity: lightingMode === 'night' ? 0.8 : 0.3
-                        });
-                        const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
-                        windowMesh.position.set(0, (i - windowCount / 2) * 4, depth / 2 + 0.1);
-                        buildingMesh.add(windowMesh);
-                    }
-                }
-
-                // Add building outlines for better definition
-                if (visualizationMode !== 'wireframe') {
-                    const edges = new THREE.EdgesGeometry(geometry);
-                    const lineMaterial = new THREE.LineBasicMaterial({
-                        color: 0x000000,
-                        opacity: 0.2,
-                        transparent: true
-                    });
-                    const wireframe = new THREE.LineSegments(edges, lineMaterial);
-                    wireframe.position.copy(buildingMesh.position);
-                    sceneRef.current.add(wireframe);
-                }
+                // Add building outline
+                const edges = new THREE.EdgesGeometry(geometry);
+                const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 1 });
+                const wireframe = new THREE.LineSegments(edges, lineMaterial);
+                wireframe.position.copy(buildingMesh.position);
+                sceneRef.current.add(wireframe);
             });
 
-            // Animation loop
+            // Enhanced Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.0);
+            sceneRef.current.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(centerX + initialDistance, initialDistance, centerY + initialDistance);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.1;
+            directionalLight.shadow.camera.far = initialDistance * 3;
+            directionalLight.shadow.camera.left = -initialDistance;
+            directionalLight.shadow.camera.right = initialDistance;
+            directionalLight.shadow.camera.top = initialDistance;
+            directionalLight.shadow.camera.bottom = -initialDistance;
+            sceneRef.current.add(directionalLight);
+
+            const hemisphereLight = new THREE.HemisphereLight(0x87CEEB, 0x8B4513, 0.6);
+            sceneRef.current.add(hemisphereLight);
+
+            // Animation Loop
             const animate = () => {
                 animationRef.current = requestAnimationFrame(animate);
 
-                // Add subtle camera movement for more dynamic feel
-                if (cameraRef.current) {
-                    const time = Date.now() * 0.0001;
-                    cameraRef.current.position.y += Math.sin(time * 2) * 0.5;
-                }
+                controlsRef.current.update();
 
                 rendererRef.current.render(sceneRef.current, cameraRef.current);
             };
             animate();
 
-            // Handle resize
+            // Handle Resize
             const handleResize = () => {
                 if (canvasRef.current && cameraRef.current && rendererRef.current) {
                     const width = canvasRef.current.clientWidth;
@@ -764,147 +436,403 @@ const KiwiSmart3D = () => {
 
             return () => {
                 window.removeEventListener('resize', handleResize);
-                if (canvasRef.current) {
-                    canvasRef.current.removeEventListener('mousemove', handleMouseMove);
-                    canvasRef.current.removeEventListener('wheel', handleWheel);
-                }
+
                 if (animationRef.current) {
                     cancelAnimationFrame(animationRef.current);
                 }
                 if (rendererRef.current) {
                     rendererRef.current.dispose();
                 }
+                buildingMeshesRef.current = [];
             };
         }
-    }, [is3DView, labelData, visualizationMode, lightingMode, showRoads, showVegetation, showWater, showTerrain, terrainData, elevationScale]);
+    }, [is3DView, labelData]);
 
-    // Enhanced file upload handler with improved TIFF support
-    const handleFileUpload = async (event) => {
+    // Enhanced coordinate translation functions
+    const translateCoordinates = (coords) => {
+        if (!coords || !coords.length) return { x: 0, y: 0 };
+        const firstCoord = coords[0];
+        const lng = firstCoord[0];
+        const lat = firstCoord[1];
+        const scaleFactor = 1000;
+        return {
+            x: lng * scaleFactor,
+            y: lat * scaleFactor
+        };
+    };
+
+    const calculateBounds = (coords) => {
+        if (!coords || !coords.length) return { width: 50, height: 50 };
+
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+
+        coords.forEach(coord => {
+            const x = coord[0] * 1000;
+            const y = coord[1] * 1000;
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+        });
+
+        return {
+            width: Math.max(maxX - minX, 10),
+            height: Math.max(maxY - minY, 10)
+        };
+    };
+
+    // Event Handlers
+    const handleFileUpload = (event) => {
         const file = event.target.files[0];
         if (file) {
             setUploadedFile(file);
+            addActivityLog('fileUploaded', 'success');
 
-            // Show loading indicator
-            const loadingToast = document.createElement('div');
-            loadingToast.className = 'position-fixed top-50 start-50 translate-middle bg-dark text-white p-3 rounded';
-            loadingToast.style.zIndex = '9999';
-            loadingToast.innerHTML = `
-                <div class="d-flex align-items-center">
-                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                    <span>Loading ${file.name}...</span>
-                </div>
-            `;
-            document.body.appendChild(loadingToast);
+            if (file.type === 'application/json' || file.name.endsWith('.json') || file.name.endsWith('.geojson')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const geojson = JSON.parse(e.target.result);
+                        console.log('GeoJSON loaded:', geojson);
 
-            try {
-                if (file.type === 'image/tiff' || file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
-                    console.log('Processing TIFF file:', file.name, 'Size:', (file.size / 1024 / 1024).toFixed(2) + 'MB');
+                        const newLabelData = geojson.features.map((feature, index) => {
+                            let coords = [];
+                            let bounds = { x: 0, y: 0, width: 50, height: 50 };
 
-                    const tiffData = await readTIFFFile(file);
-                    setTerrainData(tiffData);
-
-                    let statusMessage = 'TIFF Elevation Data';
-                    if (tiffData.synthetic) {
-                        statusMessage = `Synthetic ${tiffData.terrainType} terrain (TIFF parsing fallback)`;
-                    }
-
-                    setProjectData({
-                        name: file.name,
-                        type: statusMessage,
-                        buildings: labelData.length,
-                        terrain: true,
-                        terrainType: tiffData.terrainType || 'elevation'
-                    });
-                    setIsProjectOpen(true);
-                    setIs3DView(true);
-
-                } else if (file.type === 'application/json' || file.name.endsWith('.geojson')) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        try {
-                            const geojson = JSON.parse(e.target.result);
-                            console.log('GeoJSON loaded:', geojson);
-
-                            const newLabelData = geojson.features.map((feature, index) => {
-                                const properties = feature.properties || {};
-                                const geometry = feature.geometry;
-
-                                let bounds = { x: 0, y: 0, width: 20, height: 20 };
-
-                                if (geometry && geometry.coordinates) {
-                                    let coords = [];
-                                    if (geometry.type === 'Polygon') {
-                                        coords = geometry.coordinates[0];
-                                    } else if (geometry.type === 'Point') {
-                                        coords = [geometry.coordinates];
-                                    }
-
-                                    if (coords.length > 0) {
-                                        const xs = coords.map(c => c[0] * 1000);
-                                        const ys = coords.map(c => c[1] * 1000);
-                                        bounds = {
-                                            x: Math.min(...xs),
-                                            y: Math.min(...ys),
-                                            width: Math.max(...xs) - Math.min(...xs) || 20,
-                                            height: Math.max(...ys) - Math.min(...ys) || 20
-                                        };
-                                    }
+                            if (feature.geometry) {
+                                switch (feature.geometry.type) {
+                                    case 'Polygon':
+                                        coords = feature.geometry.coordinates[0];
+                                        break;
+                                    case 'MultiPolygon':
+                                        coords = feature.geometry.coordinates[0][0];
+                                        break;
+                                    case 'Point':
+                                        coords = [feature.geometry.coordinates];
+                                        break;
+                                    default:
+                                        coords = [[0, 0]];
                                 }
 
-                                return {
-                                    id: index + 1,
-                                    groupId: `GROUP_${String(index + 1).padStart(3, '0')}`,
-                                    buildingType: properties.building || properties.landuse || 'residential',
-                                    bounds: {
-                                        ...bounds,
-                                        height3D: properties.height || properties.levels * 3 || Math.random() * 100 + 20
-                                    },
-                                    floors: properties.levels || Math.floor((properties.height || 30) / 3),
-                                    material: properties.material || 'concrete'
-                                };
-                            });
+                                if (coords && coords.length > 0) {
+                                    const coordBounds = calculateBounds(coords);
+                                    const centerCoord = translateCoordinates(coords);
 
-                            setLabelData(newLabelData);
-                            setProjectData({
-                                name: file.name,
-                                type: 'GeoJSON Building Data',
-                                buildings: newLabelData.length
-                            });
-                            setIsProjectOpen(true);
-                            setIs3DView(true);
+                                    bounds = {
+                                        x: centerCoord.x,
+                                        y: centerCoord.y,
+                                        width: Math.max(coordBounds.width, 20),
+                                        height: Math.max(coordBounds.height, 20)
+                                    };
+                                }
+                            }
 
-                        } catch (error) {
-                            console.error('Error parsing GeoJSON:', error);
-                            alert('Error parsing GeoJSON file. Please check the format.');
-                        } finally {
-                            document.body.removeChild(loadingToast);
-                        }
-                    };
-                    reader.readAsText(file);
-                } else {
-                    // Handle other file types
-                    setProjectData({
-                        name: file.name,
-                        type: 'Unknown format - using sample data',
-                        buildings: labelData.length
-                    });
-                    setIsProjectOpen(true);
-                    setIs3DView(true);
-                    document.body.removeChild(loadingToast);
-                }
-            } catch (error) {
-                console.error('Error processing file:', error);
-                alert(`Error processing file: ${error.message || 'Unknown error'}`);
-                document.body.removeChild(loadingToast);
+                            const properties = feature.properties || {};
+                            const heightAttr = properties.height ||
+                                properties.HEIGHT ||
+                                properties.EW_HA2013 ||
+                                properties.height3D ||
+                                properties.floors * 3 ||
+                                Math.random() * 100 + 30;
+
+                            const buildingType = properties.type ||
+                                properties.building ||
+                                properties.landuse ||
+                                properties.amenity ||
+                                ['residential', 'commercial', 'industrial'][Math.floor(Math.random() * 3)];
+
+                            return {
+                                id: index + 1,
+                                groupId: `GROUP_${String(index + 1).padStart(3, '0')}`,
+                                subGroupId: `SUB_${String(Math.floor(index / 10) + 1).padStart(3, '0')}`,
+                                buildingType: buildingType,
+                                bounds: {
+                                    ...bounds,
+                                    height3D: Math.max(heightAttr, 10)
+                                }
+                            };
+                        });
+
+                        setLabelData(newLabelData);
+                        addActivityLog('geojsonProcessed', 'success');
+                    } catch (error) {
+                        console.error('Error parsing GeoJSON:', error);
+                        addActivityLog('fileUploadFailed', 'warning');
+                    }
+                };
+                reader.readAsText(file);
+            } else if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    setMapBackground(e.target.result);
+                    setImagePreview(e.target.result);
+                };
+                reader.readAsDataURL(file);
             }
 
-            // Remove loading toast after delay if still exists
             setTimeout(() => {
-                if (document.body.contains(loadingToast)) {
-                    document.body.removeChild(loadingToast);
-                }
-            }, 5000);
+                setProjectData({
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    lastModified: file.lastModified,
+                    isImage: file.type.startsWith('image/')
+                });
+                setIsProjectOpen(true);
+            }, 1000);
         }
+    };
+
+    const handleToolClick = (toolId) => {
+        if (toolId === 'ai') {
+            setIsAutoLabeling(true);
+            setLabelingProgress(0);
+            addActivityLog('aiLabelingStarted', 'info');
+
+            const interval = setInterval(() => {
+                setLabelingProgress(prev => {
+                    if (prev >= 100) {
+                        clearInterval(interval);
+                        setIsAutoLabeling(false);
+                        addActivityLog('aiLabelingCompleted', 'success');
+                        return 100;
+                    }
+                    return prev + 2;
+                });
+            }, 100);
+        } else if (toolId === '3d') {
+            setIs3DView(!is3DView);
+            addActivityLog('viewToggled3D', 'info');
+        } else if (toolId === 'reset') {
+            if (is3DView && controlsRef.current) {
+                controlsRef.current.reset();
+                addActivityLog('cameraReset', 'info');
+            } else {
+                setZoomLevel(100);
+                resetPan(); // Reset pan offset juga
+                addActivityLog('viewReset', 'info');
+            }
+        } else {
+            setSelectedTool(toolId);
+            addActivityLog(`toolSelected_${toolId}`, 'info');
+        }
+    };
+
+    // Drawing Functions
+    const saveToHistory = (newDrawingData) => {
+        const newHistory = drawingHistory.slice(0, historyIndex + 1);
+        newHistory.push([...newDrawingData]);
+        setDrawingHistory(newHistory);
+        setHistoryIndex(newHistory.length - 1);
+    };
+
+    const handleMouseDown = (e) => {
+        if (selectedTool === 'manual' && !is3DView) {
+            setIsDrawing(true);
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / (zoomLevel / 100);
+            const y = (e.clientY - rect.top) / (zoomLevel / 100);
+            setCurrentPath([{ x, y }]);
+        } else if (selectedTool === 'select' && !is3DView) {
+            // Enable panning for select tool
+            setIsPanning(true);
+            setLastPanPoint({ x: e.clientX, y: e.clientY });
+            e.currentTarget.style.cursor = 'grabbing';
+        }
+    };
+
+    const handleMouseMove = (e) => {
+        if (isDrawing && selectedTool === 'manual' && !is3DView) {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / (zoomLevel / 100);
+            const y = (e.clientY - rect.top) / (zoomLevel / 100);
+            setCurrentPath(prev => [...prev, { x, y }]);
+        } else if (isPanning && selectedTool === 'select' && !is3DView) {
+            // Handle panning
+            const deltaX = e.clientX - lastPanPoint.x;
+            const deltaY = e.clientY - lastPanPoint.y;
+
+            setPanOffset(prev => ({
+                x: prev.x + deltaX,
+                y: prev.y + deltaY
+            }));
+
+            setLastPanPoint({ x: e.clientX, y: e.clientY });
+        }
+    };
+
+    const handleMouseUp = (e) => {
+        if (isDrawing && selectedTool === 'manual' && currentPath.length > 1 && !is3DView) {
+            const newDrawing = {
+                id: Date.now(),
+                path: currentPath,
+                tool: selectedTool,
+                color: '#ff0000',
+                timestamp: new Date().toISOString()
+            };
+            const newDrawingData = [...drawingData, newDrawing];
+            setDrawingData(newDrawingData);
+            saveToHistory(newDrawingData);
+            addActivityLog('manualDrawingAdded', 'info');
+        }
+
+        // Reset states
+        setIsDrawing(false);
+        setCurrentPath([]);
+        setIsPanning(false);
+        e.currentTarget.style.cursor = selectedTool === 'manual' ? 'crosshair' : 'default';
+    };
+
+    const handleUndo = () => {
+        if (historyIndex > 0) {
+            setHistoryIndex(historyIndex - 1);
+            setDrawingData(drawingHistory[historyIndex - 1] || []);
+            addActivityLog('undoAction', 'info');
+        }
+    };
+
+    const handleRedo = () => {
+        if (historyIndex < drawingHistory.length - 1) {
+            setHistoryIndex(historyIndex + 1);
+            setDrawingData(drawingHistory[historyIndex + 1]);
+            addActivityLog('redoAction', 'info');
+        }
+    };
+
+    const handleDelete = () => {
+        if (drawingData.length > 0) {
+            const newDrawingData = [];
+            setDrawingData(newDrawingData);
+            saveToHistory(newDrawingData);
+            addActivityLog('allDrawingsDeleted', 'info');
+        }
+    };
+
+    const handleSaveProject = () => {
+        const projectToSave = {
+            name: projectData?.name || 'Untitled Project',
+            timestamp: new Date().toISOString(),
+            zoomLevel,
+            language,
+            mapBackground,
+            labelData,
+            activityLogs: activityLogs.slice(0, 10)
+        };
+
+        addActivityLog('projectSaved', 'success');
+        alert(language === 'en' ? 'Project saved successfully!' : '專案儲存成功！');
+    };
+
+    const handleSaveAsProject = () => {
+        if (!saveAsName.trim()) {
+            alert(language === 'en' ? 'Please enter a file name' : '請輸入檔案名稱');
+            return;
+        }
+
+        const projectToSave = {
+            name: saveAsName,
+            timestamp: new Date().toISOString(),
+            zoomLevel,
+            language,
+            mapBackground,
+            labelData,
+            activityLogs: activityLogs.slice(0, 10)
+        };
+
+        addActivityLog('projectSavedAs', 'success');
+        setShowSaveModal(false);
+        setSaveAsName('');
+        alert(`${language === 'en' ? 'Project saved as' : '專案另存為'}: ${saveAsName}`);
+    };
+
+    const handleMenuClick = (action) => {
+        switch (action) {
+            case 'home':
+                setIsProjectOpen(false);
+                setIs3DView(false);
+                addActivityLog('returnedHome', 'info');
+                break;
+            case 'newProject':
+                fileInputRef.current?.click();
+                addActivityLog('newProjectInitiated', 'info');
+                break;
+            case 'openProject':
+                fileInputRef.current?.click();
+                addActivityLog('openProjectInitiated', 'info');
+                break;
+            case 'save':
+                handleSaveProject();
+                break;
+            case 'saveAs':
+                setShowSaveModal(true);
+                break;
+            case 'zoomIn':
+                if (is3DView && controlsRef.current) {
+                    controlsRef.current.dollyIn(controlsRef.current.getDollyScale());
+                    addActivityLog('zoomedIn_3D', 'info');
+                } else {
+                    setZoomLevel(prev => {
+                        const newZoom = Math.min(prev + 25, 200);
+                        addActivityLog(`zoomedIn_${newZoom}`, 'info');
+                        return newZoom;
+                    });
+                }
+                break;
+            case 'zoomOut':
+                if (is3DView && controlsRef.current) {
+                    controlsRef.current.dollyOut(controlsRef.current.getDollyScale());
+                    addActivityLog('zoomedOut_3D', 'info');
+                } else {
+                    setZoomLevel(prev => {
+                        const newZoom = Math.max(prev - 25, 50);
+                        addActivityLog(`zoomedOut_${newZoom}`, 'info');
+                        return newZoom;
+                    });
+                }
+                break;
+            case 'fullScreen':
+                setIsFullScreen(!isFullScreen);
+                addActivityLog('fullScreenToggled', 'info');
+                break;
+            case 'about':
+                setShowAboutModal(true);
+                break;
+            case 'settings':
+                setShowSettingsModal(true);
+                break;
+            case 'undo':
+                handleUndo();
+                break;
+            case 'redo':
+                handleRedo();
+                break;
+            case 'cut':
+                addActivityLog('cutSelection', 'info');
+                break;
+            case 'copy':
+                addActivityLog('copySelection', 'info');
+                break;
+            case 'paste':
+                addActivityLog('pasteSelection', 'info');
+                break;
+            case 'delete':
+                handleDelete();
+                break;
+            default:
+                addActivityLog(action, 'info');
+        }
+        setActiveDropdown(null);
+    };
+
+    const addActivityLog = (action, type) => {
+        const newLog = {
+            id: Date.now(),
+            action,
+            timestamp: new Date().toLocaleString(),
+            type
+        };
+        setActivityLogs(prev => [newLog, ...prev.slice(0, 49)]);
     };
 
     const handleDragOver = (e) => {
@@ -920,138 +848,75 @@ const KiwiSmart3D = () => {
     const handleDrop = (e) => {
         e.preventDefault();
         setIsDragOver(false);
+
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            const event = { target: { files: [files[0]] } };
+            const file = files[0];
+            const event = {
+                target: {
+                    files: [file]
+                }
+            };
             handleFileUpload(event);
         }
     };
 
-    const loadSampleCity = (cityType) => {
-        let sampleData = [];
-
-        switch (cityType) {
-            case 'downtown':
-                for (let i = 0; i < 50; i++) {
-                    const x = (Math.random() - 0.5) * 400;
-                    const y = (Math.random() - 0.5) * 400;
-                    sampleData.push({
-                        id: i + 1,
-                        groupId: `DOWN_${String(i + 1).padStart(3, '0')}`,
-                        buildingType: Math.random() > 0.3 ? 'commercial' : 'residential',
-                        bounds: {
-                            x: x,
-                            y: y,
-                            width: 20 + Math.random() * 40,
-                            height: 20 + Math.random() * 40,
-                            height3D: 50 + Math.random() * 200
-                        },
-                        floors: Math.floor(Math.random() * 50) + 10,
-                        material: Math.random() > 0.5 ? 'glass' : 'concrete'
-                    });
+    const handleExport = () => {
+        const exportData = {
+            project: {
+                name: projectData?.name || 'KiwiSmart Project',
+                exportDate: new Date().toISOString(),
+                settings: {
+                    language,
+                    zoomLevel,
+                    is3DView
                 }
-                break;
-
-            case 'residential':
-                for (let i = 0; i < 80; i++) {
-                    const x = (Math.random() - 0.5) * 600;
-                    const y = (Math.random() - 0.5) * 600;
-                    sampleData.push({
-                        id: i + 1,
-                        groupId: `RES_${String(i + 1).padStart(3, '0')}`,
-                        buildingType: 'residential',
-                        bounds: {
-                            x: x,
-                            y: y,
-                            width: 15 + Math.random() * 25,
-                            height: 15 + Math.random() * 25,
-                            height3D: 8 + Math.random() * 20
-                        },
-                        floors: Math.floor(Math.random() * 5) + 1,
-                        material: Math.random() > 0.3 ? 'brick' : 'concrete'
-                    });
+            },
+            labels: labelData,
+            statistics: {
+                totalBuildings: labelData.length,
+                buildingTypes: {
+                    residential: labelData.filter(b => b.buildingType === 'residential').length,
+                    commercial: labelData.filter(b => b.buildingType === 'commercial').length,
+                    industrial: labelData.filter(b => b.buildingType === 'industrial').length
                 }
-                break;
-
-            case 'mixed':
-                for (let i = 0; i < 60; i++) {
-                    const x = (Math.random() - 0.5) * 500;
-                    const y = (Math.random() - 0.5) * 500;
-                    const types = ['residential', 'commercial', 'mixed', 'industrial'];
-                    const type = types[Math.floor(Math.random() * types.length)];
-                    sampleData.push({
-                        id: i + 1,
-                        groupId: `MIX_${String(i + 1).padStart(3, '0')}`,
-                        buildingType: type,
-                        bounds: {
-                            x: x,
-                            y: y,
-                            width: 20 + Math.random() * 35,
-                            height: 20 + Math.random() * 35,
-                            height3D: 15 + Math.random() * 100
-                        },
-                        floors: Math.floor(Math.random() * 25) + 3,
-                        material: type === 'industrial' ? 'metal' : Math.random() > 0.4 ? 'glass' : 'concrete'
-                    });
-                }
-                break;
-        }
-
-        // Create sample terrain data for demonstration
-        const sampleTerrainData = {
-            width: 128,
-            height: 128,
-            data: new Float32Array(128 * 128),
-            bounds: { minX: -400, maxX: 400, minY: -400, maxY: 400 }
+            },
+            activitySummary: activityLogs.slice(0, 20)
         };
 
-        for (let i = 0; i < 128; i++) {
-            for (let j = 0; j < 128; j++) {
-                const x = (i / 128) * 4 - 2;
-                const y = (j / 128) * 4 - 2;
-                let elevation = 10 * Math.sin(x * 0.3) * Math.cos(y * 0.3);
-                elevation += 5 * Math.sin(x * 1.1) * Math.cos(y * 1.1);
-                elevation += (Math.random() - 0.5) * 2;
-                sampleTerrainData.data[i * 128 + j] = Math.max(elevation, -2);
-            }
-        }
-
-        setTerrainData(sampleTerrainData);
-        setLabelData(sampleData);
-        setProjectData({
-            name: `Sample ${cityType} City with Terrain`,
-            type: 'sample',
-            buildings: sampleData.length,
-            terrain: true
-        });
-        setIsProjectOpen(true);
-        setIs3DView(true);
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `kiwismart_export_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        addActivityLog('labelsExported', 'success');
     };
 
-    const resetCamera = () => {
-        if (cameraRef.current && sceneRef.current) {
-            const validBuildings = labelData.filter(b => b.bounds);
-            if (validBuildings.length === 0) return;
+    const loadSampleImage = (imageType) => {
+        const sampleImages = {
+            satellite: 'https://picsum.photos/1200/800?random=1',
+            aerial: 'https://picsum.photos/1200/800?random=2',
+            map: 'https://picsum.photos/1200/800?random=3'
+        };
 
-            const bounds = {
-                minX: Math.min(...validBuildings.map(b => b.bounds.x)),
-                maxX: Math.max(...validBuildings.map(b => b.bounds.x + b.bounds.width)),
-                minY: Math.min(...validBuildings.map(b => b.bounds.y)),
-                maxY: Math.max(...validBuildings.map(b => b.bounds.y + b.bounds.height))
-            };
+        setMapBackground(sampleImages[imageType]);
+        setProjectData({
+            name: `Sample ${imageType} image`,
+            type: 'image/jpeg',
+            size: 1024000,
+            lastModified: Date.now(),
+            isImage: true,
+            isSample: true
+        });
+        addActivityLog('sampleImageLoaded', 'info');
+    };
 
-            const centerX = (bounds.minX + bounds.maxX) / 2;
-            const centerY = (bounds.minY + bounds.maxY) / 2;
-            const sceneSize = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
-            const initialDistance = sceneSize * 1.5;
-
-            cameraRef.current.position.set(
-                centerX + initialDistance * 0.8,
-                initialDistance * 0.6,
-                centerY + initialDistance * 0.8
-            );
-            cameraRef.current.lookAt(centerX, 0, centerY);
-        }
+    const resetPan = () => {
+        setPanOffset({ x: 0, y: 0 });
+        addActivityLog('panReset', 'info');
     };
 
     const MainPage = () => (
@@ -1060,7 +925,7 @@ const KiwiSmart3D = () => {
         }}>
             <div className="container">
                 <div className="row justify-content-center">
-                    <div className="col-md-10 col-lg-8">
+                    <div className="col-md-8 col-lg-6">
                         <div className="text-center">
                             <div className="mb-4">
                                 <div className="btn-group">
@@ -1097,50 +962,67 @@ const KiwiSmart3D = () => {
                                         <div className="alert alert-primary text-center mb-4">
                                             <div style={{ fontSize: '2rem' }}>☁️</div>
                                             <div className="mt-2">
-                                                {language === 'en' ? 'Drop your TIFF/3D city file here!' : '在此放置TIFF/3D城市檔案！'}
+                                                {language === 'en' ? 'Drop your file here!' : '在此放置檔案！'}
                                             </div>
                                         </div>
                                     )}
 
-                                    <div className="row g-3">
-                                        <div className="col-md-6">
-                                            <button
-                                                className="btn btn-primary btn-lg w-100 h-100 d-flex flex-column align-items-center justify-content-center"
-                                                onClick={() => fileInputRef.current?.click()}
-                                                style={{ minHeight: '120px' }}
-                                            >
-                                                <div style={{ fontSize: '2rem' }}>🗺️</div>
-                                                <div className="mt-2">{t.uploadFile}</div>
-                                                <small className="mt-1 opacity-75">{t.supportedFormats}</small>
-                                            </button>
-                                        </div>
-                                        <div className="col-md-6">
-                                            <div className="d-grid gap-2 h-100">
+                                    <div className="d-grid gap-3">
+                                        <button
+                                            className="btn btn-primary btn-lg"
+                                            onClick={() => fileInputRef.current?.click()}
+                                        >
+                                            ➕ {t.newProject}
+                                        </button>
+                                        <button
+                                            className="btn btn-outline-secondary btn-lg"
+                                            onClick={() => fileInputRef.current?.click()}
+                                        >
+                                            📁 {t.openProject}
+                                        </button>
+
+                                        <div className="mt-3">
+                                            <small className="text-muted d-block mb-2">
+                                                {language === 'en' ? 'Try Sample Images:' : '試用範例圖片：'}
+                                            </small>
+                                            <div className="btn-group w-100" role="group">
                                                 <button
-                                                    className="btn btn-outline-primary flex-fill d-flex align-items-center justify-content-center"
-                                                    onClick={() => loadSampleCity('downtown')}
+                                                    className="btn btn-outline-info btn-sm"
+                                                    onClick={() => {
+                                                        loadSampleImage('satellite');
+                                                        setIsProjectOpen(true);
+                                                    }}
                                                 >
-                                                    🏙️ {language === 'en' ? 'Downtown + Terrain' : '市中心+地形'}
+                                                    🛰️ {language === 'en' ? 'Satellite' : '衛星'}
                                                 </button>
                                                 <button
-                                                    className="btn btn-outline-success flex-fill d-flex align-items-center justify-content-center"
-                                                    onClick={() => loadSampleCity('residential')}
+                                                    className="btn btn-outline-success btn-sm"
+                                                    onClick={() => {
+                                                        loadSampleImage('aerial');
+                                                        setIsProjectOpen(true);
+                                                    }}
                                                 >
-                                                    🏘️ {language === 'en' ? 'Residential + Hills' : '住宅區+丘陵'}
+                                                    ✈️ {language === 'en' ? 'Aerial' : '航拍'}
                                                 </button>
                                                 <button
-                                                    className="btn btn-outline-warning flex-fill d-flex align-items-center justify-content-center"
-                                                    onClick={() => loadSampleCity('mixed')}
+                                                    className="btn btn-outline-warning btn-sm"
+                                                    onClick={() => {
+                                                        loadSampleImage('map');
+                                                        setIsProjectOpen(true);
+                                                    }}
                                                 >
-                                                    🌄 {language === 'en' ? 'Mixed + Mountains' : '混合+山地'}
+                                                    🗺️ {language === 'en' ? 'Map' : '地圖'}
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="mt-4">
-                                        <small className="text-muted d-block text-center">
-                                            {language === 'en' ? 'Drag & drop TIFF elevation files or choose from realistic sample cities' : '拖放TIFF高程檔案或選擇真實範例城市'}
+                                        <small className="text-muted d-block">
+                                            {t.supportedFormats}
+                                        </small>
+                                        <small className="text-muted d-block mt-1">
+                                            {language === 'en' ? 'Or drag & drop files here' : '或直接拖放檔案至此處'}
                                         </small>
                                     </div>
                                 </div>
@@ -1154,23 +1036,162 @@ const KiwiSmart3D = () => {
                 ref={fileInputRef}
                 type="file"
                 className="d-none"
-                accept=".json,.geojson,.kml,.gml,.cityjson,.tif,.tiff"
+                accept=".shp,.json,.geojson,.gpkg,.tiff,.tif,.jpg,.jpeg,.png,.gif,.bmp,.webp"
                 onChange={handleFileUpload}
             />
         </div>
     );
 
     const ProjectInterface = () => (
-        <div className="vh-100 d-flex flex-column">
-            {/* Top toolbar */}
+        <div className={`vh-100 d-flex flex-column ${isFullScreen ? 'position-fixed top-0 start-0 w-100 h-100' : ''}`} style={{ zIndex: isFullScreen ? 9999 : 'auto' }}>
             <nav className="navbar navbar-dark bg-dark px-3" style={{ minHeight: '48px' }}>
                 <div className="d-flex w-100 justify-content-between align-items-center">
-                    <div className="d-flex align-items-center">
-                        <h6 className="text-light mb-0 me-3">{projectData?.name || 'KiwiSmart 3D'}</h6>
-                        <span className="badge bg-info me-2">{labelData.length} {t.buildings}</span>
-                        <span className="badge bg-success me-2">{roadData.length} {t.roads}</span>
-                        <span className="badge bg-warning me-2">{landscapeData.length} {t.landscape}</span>
-                        {terrainData && <span className="badge bg-secondary">✓ Terrain</span>}
+                    <div className="d-flex">
+                        <div className="dropdown me-3">
+                            <button
+                                className="btn btn-dark btn-sm dropdown-toggle border-0"
+                                type="button"
+                                onClick={() => setActiveDropdown(activeDropdown === 'file' ? null : 'file')}
+                            >
+                                {t.file}
+                            </button>
+                            {activeDropdown === 'file' && (
+                                <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('home')}>
+                                        🏠 {t.home}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('newProject')}>
+                                        📄 {t.newProjectMenu}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('openProject')}>
+                                        📁 {t.openProjectMenu}
+                                    </button>
+                                    <div className="dropdown-divider"></div>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('save')}>
+                                        💾 {t.save}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('saveAs')}>
+                                        💾 {t.saveAs}
+                                    </button>
+                                    <div className="dropdown-divider"></div>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('closeProject')}>
+                                        ❌ {t.closeProject}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="dropdown me-3">
+                            <button
+                                className="btn btn-dark btn-sm dropdown-toggle border-0"
+                                type="button"
+                                onClick={() => setActiveDropdown(activeDropdown === 'edit' ? null : 'edit')}
+                            >
+                                {t.edit}
+                            </button>
+                            {activeDropdown === 'edit' && (
+                                <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('undo')} disabled={historyIndex <= 0 || is3DView}>
+                                        ↶ {t.undo}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('redo')} disabled={historyIndex >= drawingHistory.length - 1 || is3DView}>
+                                        ↷ {t.redo}
+                                    </button>
+                                    <div className="dropdown-divider"></div>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('cut')} disabled={is3DView}>
+                                        ✂️ {t.cut}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('copy')} disabled={is3DView}>
+                                        📋 {t.copy}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('paste')} disabled={is3DView}>
+                                        📌 {t.paste}
+                                    </button>
+                                    <div className="dropdown-divider"></div>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('delete')} disabled={drawingData.length === 0 || is3DView}>
+                                        🗑️ {t.delete}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="dropdown me-3">
+                            <button
+                                className="btn btn-dark btn-sm dropdown-toggle border-0"
+                                type="button"
+                                onClick={() => setActiveDropdown(activeDropdown === 'view' ? null : 'view')}
+                            >
+                                {t.view}
+                            </button>
+                            {activeDropdown === 'view' && (
+                                <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('zoomIn')}>
+                                        🔍 {t.zoomIn}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('zoomOut')}>
+                                        🔍 {t.zoomOut}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('fullScreen')}>
+                                        ⛶ {t.fullScreen}
+                                    </button>
+                                    {/* <button className="dropdown-item" onClick={() => handleToolClick('3d')}>
+                                        📐 {t.toggle3D}
+                                    </button> */}
+                                    {!is3DView && (panOffset.x !== 0 || panOffset.y !== 0) && (
+                                        <button
+                                            className="btn btn-secondary btn-sm border mt-1"
+                                            onClick={resetPan}
+                                            title="Reset Pan Position"
+                                        >
+                                            🔄
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="dropdown me-3">
+                            <button
+                                className="btn btn-dark btn-sm dropdown-toggle border-0"
+                                type="button"
+                                onClick={() => setActiveDropdown(activeDropdown === 'window' ? null : 'window')}
+                            >
+                                {t.window}
+                            </button>
+                            {activeDropdown === 'window' && (
+                                <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
+                                    <button className="dropdown-item" onClick={() => setSidebarPanel('activity')}>
+                                        📋 {t.activityLogs}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => setSidebarPanel('table')}>
+                                        📊 {t.labelTable}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="dropdown">
+                            <button
+                                className="btn btn-dark btn-sm dropdown-toggle border-0"
+                                type="button"
+                                onClick={() => setActiveDropdown(activeDropdown === 'help' ? null : 'help')}
+                            >
+                                {t.help}
+                            </button>
+                            {activeDropdown === 'help' && (
+                                <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('about')}>
+                                        ℹ️ {t.about}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('settings')}>
+                                        ⚙️ {t.settings}
+                                    </button>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('userManual')}>
+                                        📖 {t.userManual}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     <div className="d-flex align-items-center">
@@ -1188,223 +1209,672 @@ const KiwiSmart3D = () => {
                                 中
                             </button>
                         </div>
-                        <button
-                            className="btn btn-outline-light btn-sm"
-                            onClick={() => setIsProjectOpen(false)}
-                        >
-                            ✕
+
+                        <button className="btn btn-outline-light btn-sm me-1" onClick={() => handleMenuClick('minimize')}>─</button>
+                        <button className="btn btn-outline-light btn-sm me-1" onClick={() => handleMenuClick('fullScreen')}>
+                            {isFullScreen ? '🗗' : '☐'}
                         </button>
+                        <button className="btn btn-outline-light btn-sm" onClick={() => setIsProjectOpen(false)}>✕</button>
                     </div>
                 </div>
             </nav>
 
-            {/* Main content area */}
-            <div className="flex-grow-1 position-relative">
-                {is3DView ? (
-                    <div className="h-100 position-relative">
-                        <canvas
-                            ref={canvasRef}
-                            className="w-100 h-100"
-                            style={{ display: 'block', cursor: 'grab' }}
-                            onMouseDown={(e) => e.target.style.cursor = 'grabbing'}
-                            onMouseUp={(e) => e.target.style.cursor = 'grab'}
-                        />
-
-                        {/* Enhanced 3D Controls Panel */}
-                        <div className="position-absolute top-0 start-0 m-3" style={{ zIndex: 1001 }}>
-                            <div className="card bg-dark text-white" style={{ opacity: 0.95, maxHeight: '80vh', overflowY: 'auto' }}>
-                                <div className="card-body p-3">
-                                    <h6 className="mb-3">{t.visualizationMode}</h6>
-                                    <div className="btn-group-vertical w-100 mb-3" role="group">
-                                        <button
-                                            className={`btn btn-sm ${visualizationMode === 'realistic' ? 'btn-primary' : 'btn-outline-light'}`}
-                                            onClick={() => setVisualizationMode('realistic')}
-                                        >
-                                            🏗️ {t.realistic}
-                                        </button>
-                                        <button
-                                            className={`btn btn-sm ${visualizationMode === 'colorCoded' ? 'btn-primary' : 'btn-outline-light'}`}
-                                            onClick={() => setVisualizationMode('colorCoded')}
-                                        >
-                                            🎨 {t.colorCoded}
-                                        </button>
-                                        <button
-                                            className={`btn btn-sm ${visualizationMode === 'wireframe' ? 'btn-primary' : 'btn-outline-light'}`}
-                                            onClick={() => setVisualizationMode('wireframe')}
-                                        >
-                                            📐 {t.wireframe}
-                                        </button>
+            <div className="flex-grow-1 position-relative bg-light" onClick={() => setActiveDropdown(null)}>
+                <div className="h-100 position-relative overflow-hidden">
+                    {is3DView ? (
+                        <div className="h-100 position-relative">
+                            <canvas
+                                ref={canvasRef}
+                                className="w-100 h-100"
+                                style={{ display: 'block' }}
+                            />
+                        </div>
+                    ) : (
+                        <div
+                            className="h-100 position-relative d-flex align-items-center justify-content-center view-transition"
+                            style={{
+                                backgroundImage: mapBackground
+                                    ? `url(${mapBackground})`
+                                    : 'linear-gradient(45deg, #e9ecef 25%, transparent 25%), linear-gradient(-45deg, #e9ecef 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e9ecef 75%), linear-gradient(-45deg, transparent 75%, #e9ecef 75%)',
+                                backgroundSize: mapBackground ? 'cover' : '20px 20px',
+                                backgroundPosition: mapBackground ? 'center' : '0 0, 0 10px, 10px -10px, -10px 0px',
+                                backgroundRepeat: mapBackground ? 'no-repeat' : 'repeat',
+                                transform: `scale(${zoomLevel / 100}) translate(${panOffset.x}px, ${panOffset.y}px)`,
+                                transformOrigin: 'center',
+                                transition: isPanning ? 'none' : 'transform 0.3s ease-in-out',
+                                cursor: selectedTool === 'manual' ? 'crosshair' :
+                                    selectedTool === 'select' ? (isPanning ? 'grabbing' : 'grab') :
+                                        selectedTool === 'delete' ? 'not-allowed' : 'default'
+                            }}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={handleMouseUp}
+                            onMouseLeave={() => {
+                                setIsDrawing(false);
+                                setCurrentPath([]);
+                            }}
+                        >
+                            {!mapBackground ? (
+                                <div className="text-center text-muted">
+                                    <div style={{ fontSize: '4rem' }}>📍</div>
+                                    <h4>{t.satelliteMapView}</h4>
+                                    {projectData && (
+                                        <div className="mt-3">
+                                            <small className="badge bg-primary">{projectData.name}</small>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="position-absolute top-0 end-0 m-3" style={{
+                                    transform: `scale(${100 / zoomLevel})`,
+                                    transformOrigin: 'top right'
+                                }}>
+                                    <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
+                                        <div className="card-body p-2">
+                                            <small>
+                                                📸 {projectData?.name || 'Unknown'}<br />
+                                                {projectData?.size ? `${Math.round(projectData.size / 1024)} KB` : ''}<br />
+                                                Zoom: {zoomLevel}%
+                                            </small>
+                                        </div>
                                     </div>
+                                </div>
+                            )}
 
-                                    <h6 className="mb-3">{t.lightingMode}</h6>
-                                    <div className="btn-group-vertical w-100 mb-3" role="group">
-                                        <button
-                                            className={`btn btn-sm ${lightingMode === 'day' ? 'btn-warning' : 'btn-outline-light'}`}
-                                            onClick={() => setLightingMode('day')}
-                                        >
-                                            ☀️ {t.day}
-                                        </button>
-                                        <button
-                                            className={`btn btn-sm ${lightingMode === 'sunset' ? 'btn-warning' : 'btn-outline-light'}`}
-                                            onClick={() => setLightingMode('sunset')}
-                                        >
-                                            🌅 {t.sunset}
-                                        </button>
-                                        <button
-                                            className={`btn btn-sm ${lightingMode === 'night' ? 'btn-warning' : 'btn-outline-light'}`}
-                                            onClick={() => setLightingMode('night')}
-                                        >
-                                            🌙 {t.night}
-                                        </button>
-                                    </div>
-
-                                    <div className="form-check form-switch mb-2">
-                                        <input
-                                            className="form-check-input"
-                                            type="checkbox"
-                                            id="showRoads"
-                                            checked={showRoads}
-                                            onChange={() => setShowRoads(!showRoads)}
+                            <svg
+                                className="position-absolute top-0 start-0 w-100 h-100"
+                                style={{
+                                    pointerEvents: 'none',
+                                    zIndex: 10
+                                }}
+                            >
+                                {drawingData.map((drawing) => (
+                                    <g key={drawing.id}>
+                                        <path
+                                            d={`M ${drawing.path.map(point => `${point.x},${point.y}`).join(' L ')}`}
+                                            stroke={drawing.color}
+                                            strokeWidth="2"
+                                            fill="none"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
                                         />
-                                        <label className="form-check-label small" htmlFor="showRoads">
-                                            {t.showRoads}
-                                        </label>
-                                    </div>
-                                    <div className="form-check form-switch mb-2">
-                                        <input
-                                            className="form-check-input"
-                                            type="checkbox"
-                                            id="showVegetation"
-                                            checked={showVegetation}
-                                            onChange={() => setShowVegetation(!showVegetation)}
-                                        />
-                                        <label className="form-check-label small" htmlFor="showVegetation">
-                                            {t.showVegetation}
-                                        </label>
-                                    </div>
-                                    <div className="form-check form-switch mb-3">
-                                        <input
-                                            className="form-check-input"
-                                            type="checkbox"
-                                            id="showWater"
-                                            checked={showWater}
-                                            onChange={() => setShowWater(!showWater)}
-                                        />
-                                        <label className="form-check-label small" htmlFor="showWater">
-                                            {t.showWater}
-                                        </label>
-                                    </div>
+                                    </g>
+                                ))}
+                                {currentPath.length > 1 && (
+                                    <path
+                                        d={`M ${currentPath.map(point => `${point.x},${point.y}`).join(' L ')}`}
+                                        stroke="#ff0000"
+                                        strokeWidth="2"
+                                        fill="none"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                )}
+                            </svg>
 
+                            {showBuildingOutlines && (
+                                <>
+                                    {labelData.map((building) => (
+                                        <div
+                                            key={building.id}
+                                            className="position-absolute border border-danger border-2 rounded"
+                                            style={{
+                                                top: `${building.bounds.y}px`,
+                                                left: `${building.bounds.x}px`,
+                                                width: `${building.bounds.width}px`,
+                                                height: `${building.bounds.height}px`,
+                                                opacity: 0.8,
+                                                animation: 'pulse 2s infinite'
+                                            }}
+                                        ></div>
+                                    ))}
+                                </>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="position-absolute top-0 start-0 m-3 fixed-ui" style={{ zIndex: 1001 }}>
+                        <div className="btn-group-vertical" role="group">
+                            <button
+                                className="btn btn-light btn-sm border"
+                                onClick={() => handleMenuClick('zoomIn')}
+                                title={is3DView ? "Zoom In (3D)" : "Zoom In"}
+                            >
+                                ➕
+                            </button>
+                            <button
+                                className="btn btn-light btn-sm border"
+                                onClick={() => handleMenuClick('zoomOut')}
+                                title={is3DView ? "Zoom Out (3D)" : "Zoom Out"}
+                            >
+                                ➖
+                            </button>
+                            <button
+                                className="btn btn-info btn-sm border"
+                                title={`Current View: ${is3DView ? '3D Camera' : `2D ${zoomLevel}%`}`}
+                                disabled
+                            >
+                                {is3DView ? '3D' : `${zoomLevel}%`}
+                            </button>
+                            {is3DView && (
+                                <button
+                                    className="btn btn-warning btn-sm border mt-2"
+                                    onClick={() => handleToolClick('reset')}
+                                    title={t.resetCamera}
+                                >
+                                    🔄
+                                </button>
+                            )}
+                            {mapBackground && !is3DView && (
+                                <>
                                     <button
-                                        className="btn btn-success btn-sm w-100 mb-2"
-                                        onClick={resetCamera}
-                                    >
-                                        🔄 {t.resetView}
-                                    </button>
-
-                                    <button
-                                        className="btn btn-info btn-sm w-100"
+                                        className="btn btn-warning btn-sm border mt-2"
                                         onClick={() => fileInputRef.current?.click()}
+                                        title={language === 'en' ? 'Change Image' : '更換圖片'}
                                     >
-                                        📁 Load TIFF
+                                        🖼️
                                     </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Enhanced Stats Panel */}
-                        <div className="position-absolute top-0 end-0 m-3" style={{ zIndex: 1001 }}>
-                            <div className="card bg-dark text-white" style={{ opacity: 0.95 }}>
-                                <div className="card-body p-3">
-                                    <h6 className="mb-3">📊 Statistics</h6>
-                                    <div className="small">
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🏠 Residential:</span>
-                                            <span className="badge bg-success">
-                                                {labelData.filter(b => b.buildingType === 'residential').length}
-                                            </span>
-                                        </div>
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🏢 Commercial:</span>
-                                            <span className="badge bg-primary">
-                                                {labelData.filter(b => b.buildingType === 'commercial').length}
-                                            </span>
-                                        </div>
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🏭 Industrial:</span>
-                                            <span className="badge bg-warning">
-                                                {labelData.filter(b => b.buildingType === 'industrial').length}
-                                            </span>
-                                        </div>
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🏘️ Mixed:</span>
-                                            <span className="badge bg-info">
-                                                {labelData.filter(b => b.buildingType === 'mixed').length}
-                                            </span>
-                                        </div>
-                                        <hr className="my-2" />
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🗺️ Terrain:</span>
-                                            <span className="badge bg-secondary">
-                                                {terrainData ? '✓ Active' : '✗ None'}
-                                            </span>
-                                        </div>
-                                        <div className="d-flex justify-content-between mb-1">
-                                            <span>🛣️ Roads:</span>
-                                            <span className="badge bg-dark">{roadData.length}</span>
-                                        </div>
-                                        <div className="d-flex justify-content-between">
-                                            <span>Total Buildings:</span>
-                                            <span className="badge bg-light text-dark">{labelData.length}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* File Format Info Panel */}
-                        <div className="position-absolute bottom-0 end-0 m-3" style={{ zIndex: 1000 }}>
-                            <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
-                                <div className="card-body p-2 px-3">
-                                    <h6 className="small mb-2">📁 Supported Formats</h6>
-                                    <div className="small">
-                                        <div className="mb-1">🗺️ <strong>TIFF/TIF:</strong> Elevation data</div>
-                                        <div className="mb-1">🌍 <strong>GeoJSON:</strong> Building data</div>
-                                        <div className="mb-1">🏙️ <strong>CityJSON:</strong> 3D city models</div>
-                                        <div>📍 <strong>KML:</strong> Geographic data</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Enhanced Instructions */}
-                        <div className="position-absolute bottom-0 start-0 end-0 p-3" style={{ zIndex: 1000 }}>
-                            <div className="d-flex justify-content-center">
-                                <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
-                                    <div className="card-body p-2 px-3">
-                                        <small>
-                                            🖱️ {language === 'en' ? 'Drag to rotate • Scroll to zoom • Upload TIFF for realistic terrain • Use controls for customization' : '拖曳旋轉 • 滾輪縮放 • 上傳TIFF獲得真實地形 • 使用控制面板自訂'}
-                                        </small>
-                                    </div>
-                                </div>
-                            </div>
+                                    <button
+                                        className="btn btn-danger btn-sm border"
+                                        onClick={() => {
+                                            setMapBackground(null);
+                                            setImagePreview(null);
+                                            setProjectData(null);
+                                            addActivityLog('backgroundCleared', 'info');
+                                        }}
+                                        title={language === 'en' ? 'Remove Image' : '移除圖片'}
+                                    >
+                                        🗑️
+                                    </button>
+                                </>
+                            )}
+                            {/* <button
+                                className={`btn ${is3DView ? 'btn-success' : 'btn-info'} btn-sm border mt-2`}
+                                onClick={() => handleToolClick('3d')}
+                                title={t.toggle3D}
+                            >
+                                📐
+                            </button> */}
                         </div>
                     </div>
-                ) : (
-                    <div className="h-100 d-flex align-items-center justify-content-center bg-light">
-                        <div className="text-center">
-                            <div style={{ fontSize: '4rem' }}>🗺️</div>
-                            <h4>2D View Not Available</h4>
-                            <p className="text-muted">This enhanced version focuses on 3D visualization with terrain support</p>
+
+                    <div className="position-absolute bottom-0 start-0 m-3 mb-5 fixed-ui" style={{ zIndex: 1001 }}>
+                        <div className="btn-group-vertical" role="group">
                             <button
-                                className="btn btn-primary"
-                                onClick={() => setIs3DView(true)}
+                                className={`btn btn-sm border mb-1 d-flex flex-column align-items-center py-2 ${sidebarPanel === 'activity' ? 'btn-primary' : 'btn-light'}`}
+                                onClick={() => setSidebarPanel(sidebarPanel === 'activity' ? null : 'activity')}
                             >
-                                Switch to 3D View
+                                📋
+                                <small className="mt-1" style={{ fontSize: '9px' }}>{t.activityLog}</small>
+                            </button>
+                            <button
+                                className={`btn btn-sm border mb-1 d-flex flex-column align-items-center py-2 ${sidebarPanel === 'table' ? 'btn-primary' : 'btn-light'}`}
+                                onClick={() => setSidebarPanel(sidebarPanel === 'table' ? null : 'table')}
+                            >
+                                📊
+                                <small className="mt-1" style={{ fontSize: '9px' }}>{t.labelTableSidebar}</small>
+                            </button>
+                            <button
+                                className={`btn btn-sm border d-flex flex-column align-items-center py-2 ${sidebarPanel === 'filters' ? 'btn-primary' : 'btn-light'}`}
+                                onClick={() => setSidebarPanel(sidebarPanel === 'filters' ? null : 'filters')}
+                            >
+                                🔍
+                                <small className="mt-1" style={{ fontSize: '9px' }}>{t.filters}</small>
                             </button>
                         </div>
                     </div>
+
+                    <div className="position-absolute bottom-0 end-0 m-3 mb-5" style={{ zIndex: 1001 }}>
+                        {fabExpanded && (
+                            <div className="d-flex align-items-center mb-3 p-2 rounded-pill" style={{
+                                background: 'rgba(0,0,0,0.85)'
+                            }}>
+                                {fabTools.map((tool) => (
+                                    <button
+                                        key={tool.id}
+                                        className={`btn btn-sm rounded-circle me-2 d-flex align-items-center justify-content-center fab-tool ${selectedTool === tool.id ? 'btn-primary' : 'btn-light'}`}
+                                        style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}
+                                        onClick={() => {
+                                            if (tool.id === 'undo') {
+                                                handleUndo();
+                                            } else if (tool.id === 'redo') {
+                                                handleRedo();
+                                            } else if (tool.id === 'delete') {
+                                                handleDelete();
+                                            } else {
+                                                handleToolClick(tool.id);
+                                            }
+                                        }}
+                                        title={tool.label}
+                                        disabled={
+                                            (tool.id === 'undo' && historyIndex <= 0) ||
+                                            (tool.id === 'redo' && historyIndex >= drawingHistory.length - 1) ||
+                                            (tool.id === 'delete' && drawingData.length === 0) ||
+                                            (tool.id === 'manual' && is3DView)
+                                        }
+                                    >
+                                        {tool.icon}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        <button
+                            className="btn btn-secondary rounded-circle d-flex align-items-center justify-content-center shadow fab-tool"
+                            style={{ width: '56px', height: '56px', fontSize: '1.5rem' }}
+                            onClick={() => setFabExpanded(!fabExpanded)}
+                        >
+                            {fabExpanded ? '✕' : '🔧'}
+                        </button>
+                    </div>
+
+                    {sidebarPanel && (
+                        <div
+                            className="card position-absolute shadow-lg border-0"
+                            style={{
+                                left: '80px',
+                                bottom: '80px',
+                                width: '320px',
+                                height: '400px',
+                                zIndex: 1002
+                            }}
+                        >
+                            <div className="card-header d-flex justify-content-between align-items-center">
+                                <h6 className="mb-0">
+                                    {sidebarPanel === 'activity' ? t.activityLog :
+                                        sidebarPanel === 'table' ? t.labelTableSidebar : t.filters}
+                                </h6>
+                                <button
+                                    className="btn btn-link btn-sm p-0 text-muted"
+                                    onClick={() => setSidebarPanel(null)}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                            <div className="card-body p-3 overflow-auto">
+                                {sidebarPanel === 'activity' && (
+                                    <div>
+                                        {activityLogs.map((log) => (
+                                            <div key={log.id} className={`border-start border-3 ps-3 py-2 mb-3 border-${log.type === 'success' ? 'success' : log.type === 'info' ? 'primary' : 'warning'}`}>
+                                                <div className="fw-semibold">{t[log.action] || log.action}</div>
+                                                <small className="text-muted">{log.timestamp}</small>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {sidebarPanel === 'table' && (
+                                    <div className="table-responsive">
+                                        <table className="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>{t.groupId}</th>
+                                                    <th>{t.subGroupId}</th>
+                                                    <th>{t.buildingType}</th>
+                                                    <th>Height</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {labelData.map((item) => (
+                                                    <tr key={item.id}>
+                                                        <td>{item.groupId}</td>
+                                                        <td>{item.subGroupId}</td>
+                                                        <td>
+                                                            <span className={`badge bg-${item.buildingType === 'residential' ? 'success' : item.buildingType === 'commercial' ? 'primary' : 'warning'}`}>
+                                                                {t[item.buildingType]}
+                                                            </span>
+                                                        </td>
+                                                        <td>{item.bounds.height3D}m</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+
+                                {sidebarPanel === 'filters' && (
+                                    <div>
+                                        <div className="mb-3">
+                                            <div className="d-flex justify-content-between align-items-center mb-2">
+                                                <strong>View Mode:</strong>
+                                                <span className={`badge bg-${is3DView ? 'success' : 'secondary'}`}>
+                                                    {is3DView ? '3D Active' : '2D Active'}
+                                                </span>
+                                            </div>
+                                            <div className="small">
+                                                <div>Buildings: <span className="badge bg-info">{labelData.length}</span></div>
+                                                <div>View: <span className="badge bg-primary">{is3DView ? '3D Scene' : '2D Map'}</span></div>
+                                                <div>Zoom: <span className="badge bg-secondary">
+                                                    {is3DView ? `${Math.round(cameraDistance)}m` : `${zoomLevel}%`}
+                                                </span></div>
+                                                <div>Drawing: <span className={`badge bg-${is3DView ? 'warning' : 'success'}`}>
+                                                    {is3DView ? 'Disabled in 3D' : 'Enabled'}
+                                                </span></div>
+                                                {is3DView && (
+                                                    <div>Camera: <span className="badge bg-info">
+                                                        Interactive
+                                                    </span></div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <hr />
+                                        <div className="mb-3">
+                                            <strong>Building Statistics:</strong>
+                                            <div className="mt-2">
+                                                <div className="d-flex justify-content-between">
+                                                    <span>🏠 Residential:</span>
+                                                    <span className="badge bg-success">
+                                                        {labelData.filter(b => b.buildingType === 'residential').length}
+                                                    </span>
+                                                </div>
+                                                <div className="d-flex justify-content-between mt-1">
+                                                    <span>🏢 Commercial:</span>
+                                                    <span className="badge bg-primary">
+                                                        {labelData.filter(b => b.buildingType === 'commercial').length}
+                                                    </span>
+                                                </div>
+                                                <div className="d-flex justify-content-between mt-1">
+                                                    <span>🏭 Industrial:</span>
+                                                    <span className="badge bg-warning">
+                                                        {labelData.filter(b => b.buildingType === 'industrial').length}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="mb-3">
+                                            <label className="form-label">{t.buildingType}</label>
+                                            <select className="form-select form-select-sm">
+                                                <option>{t.all}</option>
+                                                <option>{t.residential}</option>
+                                                <option>{t.commercial}</option>
+                                                <option>{t.industrial}</option>
+                                            </select>
+                                        </div>
+                                        {is3DView && (
+                                            <div className="mt-3">
+                                                <button
+                                                    className="btn btn-warning btn-sm w-100 mb-2"
+                                                    onClick={() => handleToolClick('reset')}
+                                                >
+                                                    🔄 {t.resetCamera}
+                                                </button>
+                                                <button
+                                                    className="btn btn-info btn-sm w-100"
+                                                    onClick={() => setShowBuildingOutlines(!showBuildingOutlines)}
+                                                >
+                                                    📋 {showBuildingOutlines ? 'Hide' : 'Show'} Building Info
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="position-absolute bottom-0 start-0 end-0 bg-dark p-3" style={{ zIndex: 1000 }}>
+                        <div className="d-flex justify-content-center gap-3 align-items-center">
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setIsProjectOpen(false)}
+                            >
+                                🏠 {t.backToHome}
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={() => handleMenuClick('save')}
+                            >
+                                💾 {t.saveProgress}
+                            </button>
+                            <button
+                                className="btn btn-success"
+                                onClick={handleExport}
+                            >
+                                📥 {t.exportLabels}
+                            </button>
+                            {/* <button
+                                className={`btn ${is3DView ? 'btn-warning' : 'btn-info'}`}
+                                onClick={() => handleToolClick('3d')}
+                            >
+                                📐 {is3DView ? 'Switch to 2D' : 'Switch to 3D'}
+                            </button> */}
+                            {is3DView && (
+                                <button
+                                    className="btn btn-outline-light"
+                                    onClick={() => handleToolClick('reset')}
+                                >
+                                    🔄 {t.resetView}
+                                </button>
+                            )}
+                            <div className="vr"></div>
+                            <small className="text-light">
+                                Mode: <span className={`badge bg-${is3DView ? 'success' : 'primary'}`}>
+                                    {is3DView ? '3D' : '2D'}
+                                </span>
+                                {is3DView && (
+                                    <>
+                                        | Distance: <span className="badge bg-info">{Math.round(cameraDistance)}m</span>
+                                    </>
+                                )}
+                                {!is3DView && (
+                                    <>
+                                        | Zoom: <span className="badge bg-secondary">{zoomLevel}%</span>
+                                    </>
+                                )}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+
+                {isAutoLabeling && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.autoLabelingInProgress}</h5>
+                                </div>
+                                <div className="modal-body">
+                                    <div className="mb-3">
+                                        <div className="d-flex justify-content-between small text-muted mb-2">
+                                            <span>{Math.floor(labelingProgress)} / 100 {t.buildingsLabeled}</span>
+                                            <span>{Math.floor(labelingProgress)}%</span>
+                                        </div>
+                                        <div className="progress">
+                                            <div
+                                                className="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                                                role="progressbar"
+                                                style={{ width: `${labelingProgress}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-danger"
+                                        onClick={() => setIsAutoLabeling(false)}
+                                    >
+                                        {t.abort}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 )}
+
+                {showSaveModal && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.saveAsTitle}</h5>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={() => setShowSaveModal(false)}
+                                    ></button>
+                                </div>
+                                <div className="modal-body">
+                                    <div className="mb-3">
+                                        <label className="form-label">{t.fileName}</label>
+                                        <input
+                                            type="text"
+                                            className="form-control"
+                                            value={saveAsName}
+                                            onChange={(e) => setSaveAsName(e.target.value)}
+                                            placeholder={t.enterFileName}
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setShowSaveModal(false)}
+                                    >
+                                        {t.cancel}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={handleSaveAsProject}
+                                    >
+                                        {t.save}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showAboutModal && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.aboutTitle}</h5>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={() => setShowAboutModal(false)}
+                                    ></button>
+                                </div>
+                                <div className="modal-body text-center">
+                                    <div style={{ fontSize: '3rem' }} className="mb-3">🗺️</div>
+                                    <h4>{t.appTitle}</h4>
+                                    <p className="text-muted">{t.aboutContent}</p>
+                                    <hr />
+                                    <small className="text-muted">
+                                        {t.version}<br />
+                                        © 2024 KiwiSmart Technologies<br />
+                                        Enhanced 3D Visualization with Three.js<br />
+                                        Interactive Camera Controls & Real-time Rendering
+                                    </small>
+                                </div>
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setShowAboutModal(false)}
+                                    >
+                                        {t.close}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showSettingsModal && (
+                    <div
+                        className="modal fade show"
+                        style={{ display: 'block', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}
+                    >
+                        <div className="modal-dialog modal-dialog-centered">
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">{t.settingsTitle}</h5>
+                                    <button
+                                        type="button"
+                                        className="btn-close"
+                                        onClick={() => setShowSettingsModal(false)}
+                                    ></button>
+                                </div>
+                                <div className="modal-body">
+                                    <div className="mb-3">
+                                        <label className="form-label">{t.languageLabel}</label>
+                                        <select
+                                            className="form-select"
+                                            value={language}
+                                            onChange={(e) => setLanguage(e.target.value)}
+                                        >
+                                            <option value="en">English</option>
+                                            <option value="zh">中文 (Traditional Chinese)</option>
+                                        </select>
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label">{t.theme}</label>
+                                        <select className="form-select">
+                                            <option>Light</option>
+                                            <option>Dark</option>
+                                            <option>Auto</option>
+                                        </select>
+                                    </div>
+                                    <div className="mb-3">
+                                        <div className="form-check form-switch">
+                                            <input
+                                                className="form-check-input"
+                                                type="checkbox"
+                                                id="showBuildingOutlines"
+                                                checked={showBuildingOutlines}
+                                                onChange={() => setShowBuildingOutlines(!showBuildingOutlines)}
+                                            />
+                                            <label className="form-check-label" htmlFor="showBuildingOutlines">
+                                                Show Building Outlines
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setShowSettingsModal(false)}
+                                    >
+                                        {t.close}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn btn-primary"
+                                        onClick={() => {
+                                            setShowSettingsModal(false);
+                                            addActivityLog('settingsSaved', 'success');
+                                        }}
+                                    >
+                                        {t.save}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="d-none"
+                    accept=".shp,.json,.geojson,.gpkg,.tiff,.tif,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+                    onChange={handleFileUpload}
+                />
             </div>
         </div>
     );
@@ -1412,124 +1882,170 @@ const KiwiSmart3D = () => {
     return (
         <div className="App">
             <style>{`
-                body {
-                    margin: 0;
-                    padding: 0;
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+                @keyframes pulse {
+                    0%, 100% {
+                        border-color: #dc3545;
+                        opacity: 0.8;
+                    }
+                    50% {
+                        border-color: #bd2130;
+                        opacity: 1;
+                    }
+                }
+                
+                .fab-tool {
+                    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                
+                .fab-tool:hover {
+                    transform: scale(1.05);
+                }
+                
+                .dropdown-menu.show {
+                    display: block;
+                    animation: fadeIn 0.15s ease-in-out;
+                }
+                
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(-10px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                
+                .card {
+                    backdrop-filter: blur(10px);
+                }
+                
+                .progress-bar-animated {
+                    animation: progress-bar-stripes 1s linear infinite;
+                }
+                
+                @keyframes progress-bar-stripes {
+                    0% { background-position: 1rem 0; }
+                    100% { background-position: 0 0; }
                 }
                 
                 .btn {
-                    transition: all 0.2s ease;
+                    transition: all 0.15s ease-in-out;
                 }
                 
                 .btn:hover:not(:disabled) {
                     transform: translateY(-1px);
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
                 }
                 
-                .card {
-                    border: none;
-                    border-radius: 12px;
-                    backdrop-filter: blur(10px);
+                .modal {
+                    backdrop-filter: blur(3px);
                 }
                 
-                .form-check-input:checked {
-                    background-color: #0d6efd;
-                    border-color: #0d6efd;
+                .position-absolute {
+                    pointer-events: auto;
                 }
                 
-                .form-range {
-                    background: transparent;
+                .fixed-ui {
+                    position: fixed !important;
+                    z-index: 1001;
                 }
-                
-                .form-range::-webkit-slider-track {
-                    background: #495057;
-                    border-radius: 3px;
-                }
-                
-                .form-range::-webkit-slider-thumb {
-                    background: #0d6efd;
-                }
-                
+
                 canvas {
                     outline: none;
                     user-select: none;
                 }
-                
-                .navbar {
-                    backdrop-filter: blur(10px);
+
+                .canvas-container {
+                    width: 100%;
+                    height: 100%;
+                    position: relative;
+                    overflow: hidden;
                 }
-                
+
+                /* Enhanced 3D controls styling */
+                .btn-sm {
+                    padding: 0.25rem 0.5rem;
+                    font-size: 0.875rem;
+                }
+
+                /* Improved hover effects for 3D mode */
+                .btn:hover {
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                }
+
+                /* Enhanced dropdown animations */
+                .dropdown-menu {
+                    border: none;
+                    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                }
+
+                /* Smooth transitions for view switching */
+                .view-transition {
+                    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+
+                /* Enhanced badge styling */
                 .badge {
                     font-size: 0.75em;
+                    padding: 0.35em 0.65em;
                 }
-                
+
+                /* Loading animation improvements */
+                .progress-bar-striped {
+                    background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent);
+                    background-size: 1rem 1rem;
+                }
+
+                /* Enhanced modal styling */
+                .modal-content {
+                    border: none;
+                    border-radius: 12px;
+                    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                }
+
+                /* Improved responsive design */
                 @media (max-width: 768px) {
-                    .position-absolute.top-0.start-0 {
-                        position: fixed !important;
-                        top: 60px !important;
-                        left: 10px !important;
-                        right: 10px !important;
-                        z-index: 1002 !important;
-                        max-height: 50vh !important;
+                    .fab-tool {
+                        width: 35px !important;
+                        height: 35px !important;
+                        font-size: 1rem !important;
                     }
                     
-                    .position-absolute.top-0.end-0 {
-                        position: fixed !important;
-                        top: 200px !important;
-                        right: 10px !important;
-                        z-index: 1002 !important;
-                    }
-                    
-                    .position-absolute.bottom-0.end-0 {
-                        display: none !important;
+                    .btn-group-vertical .btn {
+                        padding: 0.375rem 0.5rem;
                     }
                 }
-                
-                /* Enhanced 3D visualization styles */
-                .city-controls {
-                    backdrop-filter: blur(20px);
-                    border: 1px solid rgba(255,255,255,0.2);
+
+                /* Enhanced 3D scene styling */
+                .scene-info {
+                    background: linear-gradient(135deg, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.6) 100%);
+                    border-radius: 8px;
+                    backdrop-filter: blur(10px);
                 }
-                
-                .building-realistic {
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+
+                /* Improved table styling */
+                .table-sm th,
+                .table-sm td {
+                    padding: 0.25rem 0.5rem;
+                    font-size: 0.875rem;
                 }
-                
-                .lighting-day {
-                    filter: brightness(1.2) contrast(1.1);
+
+                /* Enhanced sidebar styling */
+                .card-body {
+                    scrollbar-width: thin;
+                    scrollbar-color: #dee2e6 transparent;
                 }
-                
-                .lighting-sunset {
-                    filter: sepia(0.3) saturate(1.4) hue-rotate(15deg);
-                }
-                
-                .lighting-night {
-                    filter: brightness(0.7) contrast(1.2) hue-rotate(240deg);
-                }
-                
-                /* Terrain visualization styles */
-                .terrain-realistic {
-                    background: linear-gradient(45deg, #4a5c3a, #6b8e47);
-                }
-                
-                /* Scrollbar styles for control panel */
+
                 .card-body::-webkit-scrollbar {
                     width: 6px;
                 }
-                
+
                 .card-body::-webkit-scrollbar-track {
-                    background: rgba(255,255,255,0.1);
-                    border-radius: 3px;
+                    background: transparent;
                 }
-                
+
                 .card-body::-webkit-scrollbar-thumb {
-                    background: rgba(255,255,255,0.3);
+                    background-color: #dee2e6;
                     border-radius: 3px;
                 }
-                
+
                 .card-body::-webkit-scrollbar-thumb:hover {
-                    background: rgba(255,255,255,0.5);
+                    background-color: #adb5bd;
                 }
             `}</style>
 
@@ -1538,4 +2054,4 @@ const KiwiSmart3D = () => {
     );
 };
 
-export default KiwiSmart3D;
+export default KiwiSmartApp;
