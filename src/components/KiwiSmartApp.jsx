@@ -218,7 +218,7 @@ const KiwiSmartApp = () => {
             aiLabelingCompleted: 'AI 標籤完成',
             uploadFile: '上傳檔案',
             selectFile: '選擇檔案',
-            supportedFormats: '支援格式：Shapefile、GeoJSON、GPKG、GeoTIFF、圖片 (JPG, PNG)',
+            supportedFormats: '支援格式：GeoTIFF、圖片 (JPG, PNG)',
             fileUploaded: '檔案上傳成功',
             processing: '處理中...',
             aboutTitle: '關於 KiwiSmart',
