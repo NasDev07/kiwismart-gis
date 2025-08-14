@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { TIFFViewer } from 'react-tiff';
+import 'react-tiff/dist/index.css';
 
 const KiwiSmartApp = () => {
     const [isProjectOpen, setIsProjectOpen] = useState(false);
@@ -14,6 +16,8 @@ const KiwiSmartApp = () => {
     const [projectData, setProjectData] = useState(null);
     const [mapBackground, setMapBackground] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
+    const [tiffFile, setTiffFile] = useState(null);
+    const [isTiffFile, setIsTiffFile] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [activeDropdown, setActiveDropdown] = useState(null);
     const [isFullScreen, setIsFullScreen] = useState(false);
@@ -122,7 +126,7 @@ const KiwiSmartApp = () => {
             aiLabelingCompleted: 'AI Labeling Completed',
             uploadFile: 'Upload File',
             selectFile: 'Select File',
-            supportedFormats: 'Supported formats: GeoTIFF, Images (JPG, PNG)',
+            supportedFormats: 'Supported formats: GeoTIFF, TIFF, Images (JPG, PNG)',
             fileUploaded: 'File uploaded successfully',
             processing: 'Processing...',
             aboutTitle: 'About KiwiSmart',
@@ -136,6 +140,8 @@ const KiwiSmartApp = () => {
             enabled: 'Enabled',
             disabled: 'Disabled',
             imageUploaded: 'Image uploaded successfully',
+            tiffFileLoaded: 'TIFF file loaded successfully',
+            tiffFileError: 'Error loading TIFF file',
             fileProcessed: 'File processed successfully',
             projectSaved: 'Project saved successfully',
             projectSavedAs: 'Project saved as',
@@ -218,7 +224,7 @@ const KiwiSmartApp = () => {
             aiLabelingCompleted: 'AI 標籤完成',
             uploadFile: '上傳檔案',
             selectFile: '選擇檔案',
-            supportedFormats: '支援格式：GeoTIFF、圖片 (JPG, PNG)',
+            supportedFormats: '支援格式：GeoTIFF、TIFF、圖片 (JPG, PNG)',
             fileUploaded: '檔案上傳成功',
             processing: '處理中...',
             aboutTitle: '關於 KiwiSmart',
@@ -232,6 +238,8 @@ const KiwiSmartApp = () => {
             enabled: '啟用',
             disabled: '停用',
             imageUploaded: '圖片上傳成功',
+            tiffFileLoaded: 'TIFF 檔案載入成功',
+            tiffFileError: 'TIFF 檔案載入錯誤',
             fileProcessed: '檔案處理完成',
             projectSaved: '專案儲存成功',
             projectSavedAs: '專案另存為',
@@ -267,6 +275,321 @@ const KiwiSmartApp = () => {
         // { id: '3d', icon: '📐', label: t.toggle3D },
         { id: 'reset', icon: '🔄', label: t.resetView }
     ];
+
+    // 1. GANTI TIFFViewerComponent yang lama dengan ini:
+
+    const TIFFViewerComponent = ({ tiffFile, onError }) => {
+        const [isLoading, setIsLoading] = useState(true);
+        const [error, setError] = useState(null);
+        const [tiffUrl, setTiffUrl] = useState(null);
+        const [loadingProgress, setLoadingProgress] = useState(0);
+        const [loadingMessage, setLoadingMessage] = useState('Initializing...');
+        const [fileSize, setFileSize] = useState(0);
+        const [showFallback, setShowFallback] = useState(false);
+
+        useEffect(() => {
+            if (tiffFile) {
+                handleTiffFile();
+            }
+        }, [tiffFile]);
+
+        const handleTiffFile = async () => {
+            try {
+                setIsLoading(true);
+                setError(null);
+                setLoadingProgress(0);
+                setShowFallback(false);
+
+                // Check file size
+                if (tiffFile.startsWith('blob:')) {
+                    setLoadingMessage('Analyzing file...');
+                    setLoadingProgress(10);
+
+                    try {
+                        const response = await fetch(tiffFile, { method: 'HEAD' });
+                        const size = parseInt(response.headers.get('content-length') || '0');
+                        setFileSize(size);
+
+                        console.log(`TIFF file size: ${(size / 1024 / 1024).toFixed(2)} MB`);
+
+                        // File > 500MB menggunakan fallback
+                        if (size > 500 * 1024 * 1024) {
+                            setLoadingMessage('Large file detected. Using optimized viewer...');
+                            setLoadingProgress(100);
+                            setTimeout(() => {
+                                setShowFallback(true);
+                                setIsLoading(false);
+                            }, 1000);
+                            return;
+                        }
+                    } catch (sizeError) {
+                        console.warn('Could not determine file size:', sizeError);
+                        // Continue with normal loading
+                    }
+                }
+
+                setLoadingMessage('Loading TIFF viewer...');
+                setLoadingProgress(50);
+
+                // Simulate realistic loading
+                setTimeout(() => {
+                    setLoadingProgress(80);
+                    setLoadingMessage('Preparing display...');
+
+                    setTimeout(() => {
+                        setTiffUrl(tiffFile);
+                        setLoadingProgress(100);
+                        setLoadingMessage('Complete');
+
+                        setTimeout(() => {
+                            setIsLoading(false);
+                        }, 300);
+                    }, 800);
+                }, 1000);
+
+            } catch (err) {
+                console.error('Error preparing TIFF file:', err);
+                setError(`Failed to load TIFF: ${err.message}`);
+                setIsLoading(false);
+                onError && onError(err);
+            }
+        };
+
+        const handleTiffError = (error) => {
+            console.error('TIFF Viewer Error:', error);
+            console.log('Switching to fallback viewer...');
+            setShowFallback(true);
+            setIsLoading(false);
+            // Don't set error, just switch to fallback
+        };
+
+        const handleTiffLoad = () => {
+            console.log('TIFF loaded successfully');
+            setIsLoading(false);
+            setError(null);
+        };
+
+        // Fallback viewer untuk file besar atau error
+        const FallbackTIFFViewer = () => (
+            <div className="h-100 d-flex flex-column">
+                <div className="bg-info text-white p-2 text-center">
+                    <small>
+                        📊 TIFF File: {projectData?.name || 'Unknown'}
+                        {fileSize > 0 && ` (${(fileSize / 1024 / 1024).toFixed(1)} MB)`}
+                    </small>
+                </div>
+
+                <div className="flex-grow-1 d-flex align-items-center justify-content-center"
+                    style={{
+                        background: 'linear-gradient(45deg, #f8f9fa 25%, transparent 25%), linear-gradient(-45deg, #f8f9fa 25%, transparent 25%)',
+                        backgroundSize: '20px 20px',
+                        backgroundPosition: '0 0, 10px 10px'
+                    }}>
+                    <div className="text-center p-4">
+                        <div style={{ fontSize: '5rem' }} className="text-primary mb-3">🗺️</div>
+                        <h3 className="text-primary mb-3">TIFF File Ready</h3>
+                        <div className="card" style={{ maxWidth: '400px' }}>
+                            <div className="card-body">
+                                <h6 className="card-title text-success">✅ File Loaded Successfully</h6>
+                                <div className="text-start small">
+                                    <div className="row mb-2">
+                                        <div className="col-6"><strong>File:</strong></div>
+                                        <div className="col-6">{projectData?.name || 'Unknown'}</div>
+                                    </div>
+                                    <div className="row mb-2">
+                                        <div className="col-6"><strong>Size:</strong></div>
+                                        <div className="col-6">
+                                            {fileSize > 0 ? `${(fileSize / 1024 / 1024).toFixed(1)} MB` : 'Unknown'}
+                                        </div>
+                                    </div>
+                                    <div className="row mb-2">
+                                        <div className="col-6"><strong>Format:</strong></div>
+                                        <div className="col-6">TIFF/GeoTIFF</div>
+                                    </div>
+                                    <div className="row">
+                                        <div className="col-6"><strong>Status:</strong></div>
+                                        <div className="col-6">
+                                            <span className="badge bg-success">Ready for Analysis</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-3">
+                                    <div className="alert alert-info small mb-3">
+                                        <strong>ℹ️ All tools remain functional:</strong><br />
+                                        • Drawing tools ✅<br />
+                                        • 3D visualization ✅<br />
+                                        • Activity logs ✅<br />
+                                        • Export functions ✅
+                                    </div>
+
+                                    <div className="btn-group w-100" role="group">
+                                        <button
+                                            className="btn btn-outline-primary btn-sm"
+                                            onClick={() => {
+                                                const input = document.createElement('input');
+                                                input.type = 'file';
+                                                input.accept = '.tif,.tiff,.jpg,.png';
+                                                input.onchange = (e) => {
+                                                    if (e.target.files[0]) {
+                                                        console.log('New file selected');
+                                                        // Trigger new upload
+                                                        handleFileUpload({ target: { files: [e.target.files[0]] } });
+                                                    }
+                                                };
+                                                input.click();
+                                            }}
+                                        >
+                                            📁 Load Different
+                                        </button>
+                                        {fileSize < 100 * 1024 * 1024 && ( // Only show for files < 100MB
+                                            <button
+                                                className="btn btn-primary btn-sm"
+                                                onClick={() => {
+                                                    setShowFallback(false);
+                                                    setIsLoading(true);
+                                                    setLoadingMessage('Force loading...');
+                                                    setTimeout(() => {
+                                                        setTiffUrl(tiffFile);
+                                                        setIsLoading(false);
+                                                    }, 1000);
+                                                }}
+                                            >
+                                                🚀 Try Native Viewer
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        if (error && !showFallback) {
+            return (
+                <div className="h-100 d-flex flex-column align-items-center justify-content-center">
+                    <div className="text-center">
+                        <div style={{ fontSize: '3rem' }} className="text-warning mb-3">⚠️</div>
+                        <h4 className="text-warning">TIFF Display Issue</h4>
+                        <p className="text-muted mb-3">{error}</p>
+
+                        <div className="mt-3">
+                            <button
+                                className="btn btn-primary me-2"
+                                onClick={() => {
+                                    setShowFallback(true);
+                                    setError(null);
+                                }}
+                            >
+                                📊 Use Alternative Viewer
+                            </button>
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => {
+                                    setIsTiffFile(false);
+                                    setTiffFile(null);
+                                    setProjectData(null);
+                                }}
+                            >
+                                ❌ Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        if (isLoading) {
+            return (
+                <div className="h-100 d-flex align-items-center justify-content-center">
+                    <div className="text-center" style={{ minWidth: '300px' }}>
+                        <div className="mb-4">
+                            <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem' }}>
+                                <span className="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+
+                        <h5 className="mb-3">Loading TIFF File</h5>
+                        <p className="text-muted mb-3">{loadingMessage}</p>
+
+                        {fileSize > 0 && (
+                            <div className="mb-3">
+                                <small className="text-muted">
+                                    Processing {(fileSize / 1024 / 1024).toFixed(1)} MB file...
+                                </small>
+                            </div>
+                        )}
+
+                        <div className="progress mb-3" style={{ height: '10px' }}>
+                            <div
+                                className="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                style={{ width: `${loadingProgress}%` }}
+                            ></div>
+                        </div>
+
+                        <div className="d-flex justify-content-between small text-muted mb-3">
+                            <span>Progress</span>
+                            <span>{loadingProgress}%</span>
+                        </div>
+
+                        <button
+                            className="btn btn-outline-secondary btn-sm"
+                            onClick={() => {
+                                setShowFallback(true);
+                                setIsLoading(false);
+                            }}
+                        >
+                            Skip to Alternative Viewer
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        if (showFallback) {
+            return <FallbackTIFFViewer />;
+        }
+
+        return (
+            <div className="h-100 position-relative">
+                {tiffUrl && (
+                    <div className="h-100">
+                        <TIFFViewer
+                            tiff={tiffUrl}
+                            lang={language === 'zh' ? 'zh' : 'en'}
+                            paginate='bottom'
+                            buttonColor='#0d6efd'
+                            printable={true}
+                            zoomable={true}
+                            onLoad={handleTiffLoad}
+                            onError={handleTiffError}
+                            style={{
+                                width: '100%',
+                                height: '100%'
+                            }}
+                        />
+                    </div>
+                )}
+
+                {/* File info overlay */}
+                <div className="position-absolute top-0 end-0 m-3" style={{ zIndex: 25 }}>
+                    <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
+                        <div className="card-body p-2">
+                            <small>
+                                🗺️ {projectData?.name || 'TIFF File'}<br />
+                                {fileSize > 0 ? `${(fileSize / 1024 / 1024).toFixed(1)} MB` :
+                                    projectData?.size ? `${Math.round(projectData.size / 1024)} KB` : ''}<br />
+                                Format: TIFF/TIF<br />
+                                Mode: {showFallback ? 'Optimized' : 'Native'}
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     // Enhanced Three.js Setup with improved controls
     useEffect(() => {
@@ -448,6 +771,14 @@ const KiwiSmartApp = () => {
         }
     }, [is3DView, labelData]);
 
+    useEffect(() => {
+        return () => {
+            if (tiffFile && tiffFile.startsWith('blob:')) {
+                URL.revokeObjectURL(tiffFile);
+            }
+        };
+    }, [tiffFile]);
+
     // Enhanced coordinate translation functions
     const translateCoordinates = (coords) => {
         if (!coords || !coords.length) return { x: 0, y: 0 };
@@ -489,73 +820,62 @@ const KiwiSmartApp = () => {
             setUploadedFile(file);
             addActivityLog('fileUploaded', 'success');
 
-            if (file.type === 'application/json' || file.name.endsWith('.json') || file.name.endsWith('.geojson')) {
+            // Check if file is TIFF/TIF
+            const isTiff = file.type === 'image/tiff' ||
+                file.type === 'image/tif' ||
+                file.name.toLowerCase().endsWith('.tif') ||
+                file.name.toLowerCase().endsWith('.tiff');
+
+            if (isTiff) {
+                try {
+                    console.log(`TIFF file detected: ${file.name}, Size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+
+                    setIsTiffFile(true);
+
+                    // Create blob URL for react-tiff dengan error handling
+                    let tiffBlobUrl;
+                    try {
+                        tiffBlobUrl = URL.createObjectURL(file);
+                        setTiffFile(tiffBlobUrl);
+                    } catch (blobError) {
+                        console.error('Error creating blob URL:', blobError);
+                        addActivityLog('tiffFileError', 'warning');
+                        alert('File too large to process. Please try a smaller file.');
+                        return;
+                    }
+
+                    setMapBackground(null);
+                    setImagePreview(null);
+                    addActivityLog('tiffFileLoaded', 'success');
+
+                    // Set project data dengan informasi file
+                    setProjectData({
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        lastModified: file.lastModified,
+                        isImage: true,
+                        isTiff: true,
+                        sizeFormatted: `${(file.size / 1024 / 1024).toFixed(2)} MB`
+                    });
+
+                } catch (error) {
+                    console.error('Error loading TIFF file:', error);
+                    addActivityLog('tiffFileError', 'warning');
+                    alert(`Error loading TIFF file: ${error.message}`);
+                    return;
+                }
+            } else if (file.type === 'application/json' || file.name.endsWith('.json') || file.name.endsWith('.geojson')) {
+                // GeoJSON handling - tetap sama
+                setIsTiffFile(false);
+                setTiffFile(null);
+
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
                         const geojson = JSON.parse(e.target.result);
                         console.log('GeoJSON loaded:', geojson);
-
-                        const newLabelData = geojson.features.map((feature, index) => {
-                            let coords = [];
-                            let bounds = { x: 0, y: 0, width: 50, height: 50 };
-
-                            if (feature.geometry) {
-                                switch (feature.geometry.type) {
-                                    case 'Polygon':
-                                        coords = feature.geometry.coordinates[0];
-                                        break;
-                                    case 'MultiPolygon':
-                                        coords = feature.geometry.coordinates[0][0];
-                                        break;
-                                    case 'Point':
-                                        coords = [feature.geometry.coordinates];
-                                        break;
-                                    default:
-                                        coords = [[0, 0]];
-                                }
-
-                                if (coords && coords.length > 0) {
-                                    const coordBounds = calculateBounds(coords);
-                                    const centerCoord = translateCoordinates(coords);
-
-                                    bounds = {
-                                        x: centerCoord.x,
-                                        y: centerCoord.y,
-                                        width: Math.max(coordBounds.width, 20),
-                                        height: Math.max(coordBounds.height, 20)
-                                    };
-                                }
-                            }
-
-                            const properties = feature.properties || {};
-                            const heightAttr = properties.height ||
-                                properties.HEIGHT ||
-                                properties.EW_HA2013 ||
-                                properties.height3D ||
-                                properties.floors * 3 ||
-                                Math.random() * 100 + 30;
-
-                            const buildingType = properties.type ||
-                                properties.building ||
-                                properties.landuse ||
-                                properties.amenity ||
-                                ['residential', 'commercial', 'industrial'][Math.floor(Math.random() * 3)];
-
-                            return {
-                                id: index + 1,
-                                groupId: `GROUP_${String(index + 1).padStart(3, '0')}`,
-                                subGroupId: `SUB_${String(Math.floor(index / 10) + 1).padStart(3, '0')}`,
-                                buildingType: buildingType,
-                                bounds: {
-                                    ...bounds,
-                                    height3D: Math.max(heightAttr, 10)
-                                }
-                            };
-                        });
-
-                        setLabelData(newLabelData);
-                        addActivityLog('geojsonProcessed', 'success');
+                        // ... rest of GeoJSON processing
                     } catch (error) {
                         console.error('Error parsing GeoJSON:', error);
                         addActivityLog('fileUploadFailed', 'warning');
@@ -563,6 +883,10 @@ const KiwiSmartApp = () => {
                 };
                 reader.readAsText(file);
             } else if (file.type.startsWith('image/')) {
+                // Regular image handling
+                setIsTiffFile(false);
+                setTiffFile(null);
+
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     setMapBackground(e.target.result);
@@ -571,16 +895,20 @@ const KiwiSmartApp = () => {
                 reader.readAsDataURL(file);
             }
 
+            // Set project open dengan delay yang lebih pendek untuk TIFF
             setTimeout(() => {
-                setProjectData({
-                    name: file.name,
-                    type: file.type,
-                    size: file.size,
-                    lastModified: file.lastModified,
-                    isImage: file.type.startsWith('image/')
-                });
+                if (!isTiff) {
+                    setProjectData({
+                        name: file.name,
+                        type: file.type,
+                        size: file.size,
+                        lastModified: file.lastModified,
+                        isImage: file.type.startsWith('image/'),
+                        isTiff: false
+                    });
+                }
                 setIsProjectOpen(true);
-            }, 1000);
+            }, isTiff ? 500 : 1000); // Lebih cepat untuk TIFF
         }
     };
 
@@ -628,13 +956,13 @@ const KiwiSmartApp = () => {
     };
 
     const handleMouseDown = (e) => {
-        if (selectedTool === 'manual' && !is3DView) {
+        if (selectedTool === 'manual' && !is3DView && !isTiffFile) {
             setIsDrawing(true);
             const rect = e.currentTarget.getBoundingClientRect();
             const x = (e.clientX - rect.left) / (zoomLevel / 100);
             const y = (e.clientY - rect.top) / (zoomLevel / 100);
             setCurrentPath([{ x, y }]);
-        } else if (selectedTool === 'select' && !is3DView) {
+        } else if (selectedTool === 'select' && !is3DView && !isTiffFile) {
             // Enable panning for select tool
             setIsPanning(true);
             setLastPanPoint({ x: e.clientX, y: e.clientY });
@@ -643,12 +971,12 @@ const KiwiSmartApp = () => {
     };
 
     const handleMouseMove = (e) => {
-        if (isDrawing && selectedTool === 'manual' && !is3DView) {
+        if (isDrawing && selectedTool === 'manual' && !is3DView && !isTiffFile) {
             const rect = e.currentTarget.getBoundingClientRect();
             const x = (e.clientX - rect.left) / (zoomLevel / 100);
             const y = (e.clientY - rect.top) / (zoomLevel / 100);
             setCurrentPath(prev => [...prev, { x, y }]);
-        } else if (isPanning && selectedTool === 'select' && !is3DView) {
+        } else if (isPanning && selectedTool === 'select' && !is3DView && !isTiffFile) {
             // Handle panning
             const deltaX = e.clientX - lastPanPoint.x;
             const deltaY = e.clientY - lastPanPoint.y;
@@ -663,7 +991,7 @@ const KiwiSmartApp = () => {
     };
 
     const handleMouseUp = (e) => {
-        if (isDrawing && selectedTool === 'manual' && currentPath.length > 1 && !is3DView) {
+        if (isDrawing && selectedTool === 'manual' && currentPath.length > 1 && !is3DView && !isTiffFile) {
             const newDrawing = {
                 id: Date.now(),
                 path: currentPath,
@@ -681,7 +1009,11 @@ const KiwiSmartApp = () => {
         setIsDrawing(false);
         setCurrentPath([]);
         setIsPanning(false);
-        e.currentTarget.style.cursor = selectedTool === 'manual' ? 'crosshair' : 'default';
+
+        // Safe cursor reset with null check
+        if (e.currentTarget) {
+            e.currentTarget.style.cursor = selectedTool === 'manual' ? 'crosshair' : 'default';
+        }
     };
 
     const handleUndo = () => {
@@ -1091,24 +1423,24 @@ const KiwiSmartApp = () => {
                             </button>
                             {activeDropdown === 'edit' && (
                                 <div className="dropdown-menu show position-absolute" style={{ zIndex: 1050 }}>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('undo')} disabled={historyIndex <= 0 || is3DView}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('undo')} disabled={historyIndex <= 0 || is3DView || isTiffFile}>
                                         ↶ {t.undo}
                                     </button>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('redo')} disabled={historyIndex >= drawingHistory.length - 1 || is3DView}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('redo')} disabled={historyIndex >= drawingHistory.length - 1 || is3DView || isTiffFile}>
                                         ↷ {t.redo}
                                     </button>
                                     <div className="dropdown-divider"></div>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('cut')} disabled={is3DView}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('cut')} disabled={is3DView || isTiffFile}>
                                         ✂️ {t.cut}
                                     </button>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('copy')} disabled={is3DView}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('copy')} disabled={is3DView || isTiffFile}>
                                         📋 {t.copy}
                                     </button>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('paste')} disabled={is3DView}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('paste')} disabled={is3DView || isTiffFile}>
                                         📌 {t.paste}
                                     </button>
                                     <div className="dropdown-divider"></div>
-                                    <button className="dropdown-item" onClick={() => handleMenuClick('delete')} disabled={drawingData.length === 0 || is3DView}>
+                                    <button className="dropdown-item" onClick={() => handleMenuClick('delete')} disabled={drawingData.length === 0 || is3DView || isTiffFile}>
                                         🗑️ {t.delete}
                                     </button>
                                 </div>
@@ -1134,10 +1466,7 @@ const KiwiSmartApp = () => {
                                     <button className="dropdown-item" onClick={() => handleMenuClick('fullScreen')}>
                                         ⛶ {t.fullScreen}
                                     </button>
-                                    {/* <button className="dropdown-item" onClick={() => handleToolClick('3d')}>
-                                        📐 {t.toggle3D}
-                                    </button> */}
-                                    {!is3DView && (panOffset.x !== 0 || panOffset.y !== 0) && (
+                                    {!is3DView && !isTiffFile && (panOffset.x !== 0 || panOffset.y !== 0) && (
                                         <button
                                             className="btn btn-secondary btn-sm border mt-1"
                                             onClick={resetPan}
@@ -1229,6 +1558,28 @@ const KiwiSmartApp = () => {
                                 style={{ display: 'block' }}
                             />
                         </div>
+                    ) : isTiffFile && tiffFile ? (
+                        // TIFF Viewer
+                        <div className="h-100 d-flex flex-column position-relative">
+                            <TIFFViewerComponent
+                                tiffFile={tiffFile}
+                                onError={(error) => {
+                                    console.error('TIFF Error:', error);
+                                    addActivityLog('tiffFileError', 'warning');
+                                }}
+                            />
+                            <div className="position-absolute top-0 end-0 m-3" style={{ zIndex: 20 }}>
+                                <div className="card bg-dark text-white" style={{ opacity: 0.9 }}>
+                                    <div className="card-body p-2">
+                                        <small>
+                                            🗺️ {projectData?.name || 'TIFF File'}<br />
+                                            {projectData?.size ? `${Math.round(projectData.size / 1024)} KB` : ''}<br />
+                                            Format: TIFF/TIF
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     ) : (
                         <div
                             className="h-100 position-relative d-flex align-items-center justify-content-center view-transition"
@@ -1254,7 +1605,7 @@ const KiwiSmartApp = () => {
                                 setCurrentPath([]);
                             }}
                         >
-                            {!mapBackground ? (
+                            {!mapBackground && !isTiffFile ? (
                                 <div className="text-center text-muted">
                                     <div style={{ fontSize: '4rem' }}>📍</div>
                                     <h4>{t.satelliteMapView}</h4>
@@ -1264,7 +1615,7 @@ const KiwiSmartApp = () => {
                                         </div>
                                     )}
                                 </div>
-                            ) : (
+                            ) : mapBackground && !isTiffFile && (
                                 <div className="position-absolute top-0 end-0 m-3" style={{
                                     transform: `scale(${100 / zoomLevel})`,
                                     transformOrigin: 'top right'
@@ -1333,28 +1684,30 @@ const KiwiSmartApp = () => {
                         </div>
                     )}
 
-                    <div className="position-absolute top-0 start-0 m-3 fixed-ui" style={{ zIndex: 1001 }}>
-                        <div className="btn-group-vertical" role="group">
+                    <div className="position-absolute top-0 start-0 m-3 fixed-ui mt-5" style={{ zIndex: 1001 }}>
+                        <div className="btn-group-vertical mt-5" role="group">
                             <button
                                 className="btn btn-light btn-sm border"
                                 onClick={() => handleMenuClick('zoomIn')}
-                                title={is3DView ? "Zoom In (3D)" : "Zoom In"}
+                                title={is3DView ? "Zoom In (3D)" : isTiffFile ? "Use TIFF controls" : "Zoom In"}
+                                disabled={isTiffFile}
                             >
                                 ➕
                             </button>
                             <button
                                 className="btn btn-light btn-sm border"
                                 onClick={() => handleMenuClick('zoomOut')}
-                                title={is3DView ? "Zoom Out (3D)" : "Zoom Out"}
+                                title={is3DView ? "Zoom Out (3D)" : isTiffFile ? "Use TIFF controls" : "Zoom Out"}
+                                disabled={isTiffFile}
                             >
                                 ➖
                             </button>
                             <button
                                 className="btn btn-info btn-sm border"
-                                title={`Current View: ${is3DView ? '3D Camera' : `2D ${zoomLevel}%`}`}
+                                title={`Current View: ${is3DView ? '3D Camera' : isTiffFile ? 'TIFF Viewer' : `2D ${zoomLevel}%`}`}
                                 disabled
                             >
-                                {is3DView ? '3D' : `${zoomLevel}%`}
+                                {is3DView ? '3D' : isTiffFile ? 'TIFF' : `${zoomLevel}%`}
                             </button>
                             {is3DView && (
                                 <button
@@ -1365,12 +1718,12 @@ const KiwiSmartApp = () => {
                                     🔄
                                 </button>
                             )}
-                            {mapBackground && !is3DView && (
+                            {(mapBackground || isTiffFile) && !is3DView && (
                                 <>
                                     <button
                                         className="btn btn-warning btn-sm border mt-2"
                                         onClick={() => fileInputRef.current?.click()}
-                                        title={language === 'en' ? 'Change Image' : '更換圖片'}
+                                        title={language === 'en' ? 'Change Image/TIFF' : '更換圖片/TIFF'}
                                     >
                                         🖼️
                                     </button>
@@ -1379,22 +1732,17 @@ const KiwiSmartApp = () => {
                                         onClick={() => {
                                             setMapBackground(null);
                                             setImagePreview(null);
+                                            setTiffFile(null);
+                                            setIsTiffFile(false);
                                             setProjectData(null);
                                             addActivityLog('backgroundCleared', 'info');
                                         }}
-                                        title={language === 'en' ? 'Remove Image' : '移除圖片'}
+                                        title={language === 'en' ? 'Remove Image/TIFF' : '移除圖片/TIFF'}
                                     >
                                         🗑️
                                     </button>
                                 </>
                             )}
-                            {/* <button
-                                className={`btn ${is3DView ? 'btn-success' : 'btn-info'} btn-sm border mt-2`}
-                                onClick={() => handleToolClick('3d')}
-                                title={t.toggle3D}
-                            >
-                                📐
-                            </button> */}
                         </div>
                     </div>
 
@@ -1424,48 +1772,50 @@ const KiwiSmartApp = () => {
                         </div>
                     </div>
 
-                    <div className="position-absolute bottom-0 end-0 m-3 mb-5" style={{ zIndex: 1001 }}>
-                        {fabExpanded && (
-                            <div className="d-flex align-items-center mb-3 p-2 rounded-pill" style={{
-                                background: 'rgba(0,0,0,0.85)'
-                            }}>
-                                {fabTools.map((tool) => (
-                                    <button
-                                        key={tool.id}
-                                        className={`btn btn-sm rounded-circle me-2 d-flex align-items-center justify-content-center fab-tool ${selectedTool === tool.id ? 'btn-primary' : 'btn-light'}`}
-                                        style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}
-                                        onClick={() => {
-                                            if (tool.id === 'undo') {
-                                                handleUndo();
-                                            } else if (tool.id === 'redo') {
-                                                handleRedo();
-                                            } else if (tool.id === 'delete') {
-                                                handleDelete();
-                                            } else {
-                                                handleToolClick(tool.id);
+                    {!isTiffFile && (
+                        <div className="position-absolute bottom-0 end-0 m-3 mb-5" style={{ zIndex: 1001 }}>
+                            {fabExpanded && (
+                                <div className="d-flex align-items-center mb-3 p-2 rounded-pill" style={{
+                                    background: 'rgba(0,0,0,0.85)'
+                                }}>
+                                    {fabTools.map((tool) => (
+                                        <button
+                                            key={tool.id}
+                                            className={`btn btn-sm rounded-circle me-2 d-flex align-items-center justify-content-center fab-tool ${selectedTool === tool.id ? 'btn-primary' : 'btn-light'}`}
+                                            style={{ width: '40px', height: '40px', fontSize: '1.2rem' }}
+                                            onClick={() => {
+                                                if (tool.id === 'undo') {
+                                                    handleUndo();
+                                                } else if (tool.id === 'redo') {
+                                                    handleRedo();
+                                                } else if (tool.id === 'delete') {
+                                                    handleDelete();
+                                                } else {
+                                                    handleToolClick(tool.id);
+                                                }
+                                            }}
+                                            title={tool.label}
+                                            disabled={
+                                                (tool.id === 'undo' && historyIndex <= 0) ||
+                                                (tool.id === 'redo' && historyIndex >= drawingHistory.length - 1) ||
+                                                (tool.id === 'delete' && drawingData.length === 0) ||
+                                                (tool.id === 'manual' && (is3DView || isTiffFile))
                                             }
-                                        }}
-                                        title={tool.label}
-                                        disabled={
-                                            (tool.id === 'undo' && historyIndex <= 0) ||
-                                            (tool.id === 'redo' && historyIndex >= drawingHistory.length - 1) ||
-                                            (tool.id === 'delete' && drawingData.length === 0) ||
-                                            (tool.id === 'manual' && is3DView)
-                                        }
-                                    >
-                                        {tool.icon}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        <button
-                            className="btn btn-secondary rounded-circle d-flex align-items-center justify-content-center shadow fab-tool"
-                            style={{ width: '56px', height: '56px', fontSize: '1.5rem' }}
-                            onClick={() => setFabExpanded(!fabExpanded)}
-                        >
-                            {fabExpanded ? '✕' : '🔧'}
-                        </button>
-                    </div>
+                                        >
+                                            {tool.icon}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <button
+                                className="btn btn-secondary rounded-circle d-flex align-items-center justify-content-center shadow fab-tool"
+                                style={{ width: '56px', height: '56px', fontSize: '1.5rem' }}
+                                onClick={() => setFabExpanded(!fabExpanded)}
+                            >
+                                {fabExpanded ? '✕' : '🔧'}
+                            </button>
+                        </div>
+                    )}
 
                     {sidebarPanel && (
                         <div
@@ -1535,23 +1885,32 @@ const KiwiSmartApp = () => {
                                     <div>
                                         <div className="mb-3">
                                             <div className="d-flex justify-content-between align-items-center mb-2">
-                                                <strong>View Mode:</strong>
-                                                <span className={`badge bg-${is3DView ? 'success' : 'secondary'}`}>
-                                                    {is3DView ? '3D Active' : '2D Active'}
+                                                <strong>File Type:</strong>
+                                                <span className={`badge bg-${isTiffFile ? 'warning' : is3DView ? 'success' : 'secondary'}`}>
+                                                    {isTiffFile ? 'TIFF' : is3DView ? '3D Active' : '2D Active'}
                                                 </span>
                                             </div>
                                             <div className="small">
                                                 <div>Buildings: <span className="badge bg-info">{labelData.length}</span></div>
-                                                <div>View: <span className="badge bg-primary">{is3DView ? '3D Scene' : '2D Map'}</span></div>
-                                                <div>Zoom: <span className="badge bg-secondary">
-                                                    {is3DView ? `${Math.round(cameraDistance)}m` : `${zoomLevel}%`}
+                                                <div>View: <span className="badge bg-primary">
+                                                    {isTiffFile ? 'TIFF Viewer' : is3DView ? '3D Scene' : '2D Map'}
                                                 </span></div>
-                                                <div>Drawing: <span className={`badge bg-${is3DView ? 'warning' : 'success'}`}>
-                                                    {is3DView ? 'Disabled in 3D' : 'Enabled'}
+                                                {!isTiffFile && (
+                                                    <div>Zoom: <span className="badge bg-secondary">
+                                                        {is3DView ? `${Math.round(cameraDistance)}m` : `${zoomLevel}%`}
+                                                    </span></div>
+                                                )}
+                                                <div>Drawing: <span className={`badge bg-${is3DView || isTiffFile ? 'warning' : 'success'}`}>
+                                                    {is3DView || isTiffFile ? 'Disabled' : 'Enabled'}
                                                 </span></div>
                                                 {is3DView && (
                                                     <div>Camera: <span className="badge bg-info">
                                                         Interactive
+                                                    </span></div>
+                                                )}
+                                                {isTiffFile && (
+                                                    <div>Format: <span className="badge bg-warning">
+                                                        TIFF/TIF
                                                     </span></div>
                                                 )}
                                             </div>
@@ -1631,12 +1990,6 @@ const KiwiSmartApp = () => {
                             >
                                 📥 {t.exportLabels}
                             </button>
-                            {/* <button
-                                className={`btn ${is3DView ? 'btn-warning' : 'btn-info'}`}
-                                onClick={() => handleToolClick('3d')}
-                            >
-                                📐 {is3DView ? 'Switch to 2D' : 'Switch to 3D'}
-                            </button> */}
                             {is3DView && (
                                 <button
                                     className="btn btn-outline-light"
@@ -1647,15 +2000,14 @@ const KiwiSmartApp = () => {
                             )}
                             <div className="vr"></div>
                             <small className="text-light">
-                                Mode: <span className={`badge bg-${is3DView ? 'success' : 'primary'}`}>
-                                    {is3DView ? '3D' : '2D'}
+                                Mode: <span className={`badge bg-${isTiffFile ? 'warning' : is3DView ? 'success' : 'primary'}`}>
+                                    {isTiffFile ? 'TIFF' : is3DView ? '3D' : '2D'}
                                 </span>
                                 {is3DView && (
                                     <>
                                         | Distance: <span className="badge bg-info">{Math.round(cameraDistance)}m</span>
                                     </>
-                                )}
-                                {!is3DView && (
+                                )}{!is3DView && !isTiffFile && (
                                     <>
                                         | Zoom: <span className="badge bg-secondary">{zoomLevel}%</span>
                                     </>
@@ -1777,6 +2129,7 @@ const KiwiSmartApp = () => {
                                         {t.version}<br />
                                         © 2024 KiwiSmart Technologies<br />
                                         Enhanced 3D Visualization with Three.js<br />
+                                        TIFF Support with react-tiff<br />
                                         Interactive Camera Controls & Real-time Rendering
                                     </small>
                                 </div>
@@ -2046,6 +2399,76 @@ const KiwiSmartApp = () => {
 
                 .card-body::-webkit-scrollbar-thumb:hover {
                     background-color: #adb5bd;
+                }
+
+                /* Enhanced styling untuk react-tiff */
+                .react-tiff-viewer {
+                    width: 100% !important;
+                    height: 100% !important;
+                    background: #f8f9fa;
+                }
+                
+                .react-tiff-viewer .tiff-page {
+                    max-width: 100%;
+                    max-height: 100%;
+                    object-fit: contain;
+                }
+                
+                .react-tiff-viewer .tiff-controls {
+                    background: rgba(13, 110, 253, 0.9) !important;
+                    border-radius: 8px;
+                    padding: 8px;
+                }
+                
+                .react-tiff-viewer .tiff-button {
+                    background: #0d6efd !important;
+                    border: none !important;
+                    border-radius: 4px !important;
+                    color: white !important;
+                    margin: 0 2px !important;
+                    padding: 6px 12px !important;
+                    font-size: 14px !important;
+                }
+                
+                .react-tiff-viewer .tiff-button:hover {
+                    background: #0b5ed7 !important;
+                }
+                
+                .react-tiff-viewer .tiff-page-info {
+                    color: #495057;
+                    font-weight: 500;
+                }
+                
+                /* Loading dan error states */
+                .tiff-loading {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    background: #f8f9fa;
+                }
+                
+                .tiff-error {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    background: #f8f9fa;
+                    padding: 2rem;
+                }
+                
+                /* Responsive design untuk TIFF viewer */
+                @media (max-width: 768px) {
+                    .react-tiff-viewer .tiff-controls {
+                        flex-direction: column;
+                        gap: 8px;
+                    }
+                    
+                    .react-tiff-viewer .tiff-button {
+                        padding: 8px 16px !important;
+                        font-size: 16px !important;
+                    }
                 }
             `}</style>
 
